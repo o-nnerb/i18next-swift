@@ -6,7 +6,8 @@
 //     source   the upstream test file the cases were taken from
 //     init     i18next init options (JSON only: no functions)
 //     tests    [[key, options?], ...]
-//     options  { kind }, one of: t (default), exists, getResource, resolveHierarchy, formatCode, languagePart, pluralSuffix
+//     options  { kind }, one of: t (default), exists, getResource, resolveHierarchy, formatCode, languagePart, pluralSuffix,
+//              bestMatch
 
 var __suites = [];
 
@@ -34,6 +35,9 @@ function __call(instance, kind, key, options) {
             return instance.services.languageUtils.formatLanguageCode(key);
         case 'languagePart':
             return instance.services.languageUtils.getLanguagePartFromCode(key);
+        case 'bestMatch':
+            // key = array of candidate codes
+            return instance.services.languageUtils.getBestMatchFromCodes(key);
         case 'pluralSuffix':
             // key = language, options = { count, ordinal }
             return instance.services.pluralResolver.getSuffix(key, (options || {}).count, __clone(options) || {});

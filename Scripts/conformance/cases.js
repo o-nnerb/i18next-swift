@@ -550,3 +550,146 @@ suite('translate/arrayOfKeys', 'translator.translate.array.test.js', {
     [['missing'], { defaultValue: 'fallback' }],
     [['missing', 'alsoMissing'], { defaultValue: 'fallback' }]
 ]);
+
+// MARK: translator.translate.returnObject.test.js
+
+var __objectResources = {
+    en: {
+        common: {
+            test: ['common_test_en_1', 'common_test_en_2'],
+            something: { range: '[{{min}}..{{max}}]' },
+            somethingElse: { range: '[{{min}}..{{max}}]', hello: 'hello {{what}}', foo: 'bar' },
+            requirements: ['lorem ipsum', 'lorem ipsum', 'hello {{what}}'],
+            boolean: { value: true },
+            number: { value: 42 },
+            nested: { deep: { list: ['a', { b: 'B {{x}}' }], n: 1 }, s: 's' },
+            array: ['common_array_en_1', 'common_array_en_2']
+        },
+        special: { test: ['special_test_en_1', 'special_test_en_2'] },
+        withContext: { string: 'hello world', string_lined: ['hello', 'world'] }
+    },
+    de: { common: { test: ['common_test_de_1', 'common_test_de_2'] }, special: { test: ['special_test_de_1', 'special_test_de_2'] } }
+};
+
+suite('returnObjects[on]', 'translator.translate.returnObject.test.js', {
+    lng: 'en', fallbackLng: 'en', returnObjects: true, ns: ['common', 'special', 'withContext'], defaultNS: 'common',
+    resources: __objectResources
+}, [
+    ['common:test'],
+    ['special:test'],
+    ['common:somethingElse', { min: '1', max: '1000', what: 'world' }],
+    ['common:requirements', { what: 'world' }],
+    ['common:something'],
+    ['common:something', { min: '1', max: '1000' }],
+    ['common:something.range', { min: '1', max: '1000' }],
+    ['common:boolean'],
+    ['common:number'],
+    ['withContext:string'],
+    ['withContext:string', { context: 'lined' }],
+    ['common:nested', { x: 'X' }],
+    ['common:nested.deep'],
+    ['common:test', { lng: 'de' }],
+    ['common:missing'],
+    ['common:missing', { defaultValue: 'dv' }],
+    ['common:test', { returnObjects: false }]
+]);
+
+suite('returnObjects[off]', 'translator.translate.returnObject.test.js', {
+    lng: 'en', fallbackLng: 'en', returnObjects: false, ns: ['common', 'special'], defaultNS: 'common',
+    resources: __objectResources
+}, [
+    ['common:array'],
+    ['common:array', { returnObjects: true }],
+    ['common:array', { defaultValue: 'dv' }],
+    ['common:something'],
+    ['common:test.0']
+]);
+
+// MARK: translator.translate.array.test.js (joinArrays and arrays under returnObjects)
+
+suite('joinArrays', 'translator.translate.array.test.js', {
+    lng: 'en', fallbackLng: 'en', returnObjects: true, ns: 'translation', defaultNS: 'translation', keySeparator: '.',
+    resources: {
+        en: {
+            translation: {
+                test: ['test_en_1', 'test_en_2', '{{myVar}}'],
+                flagList: [['basic1', 'Basic1'], ['simple1', 'Simple1']],
+                search: { flagList: [['basic', 'Basic'], ['simple', 'Simple']] },
+                keyArray_one: ['hello world {{count}}', 'hey {{count}}'],
+                keyArray_other: ['hello world plural {{count}}', 'hey plural {{count}}'],
+                recursiveA: ['a', '$t(recursiveB)'],
+                recursiveB: ['b', '$t(recursiveA)']
+            }
+        }
+    }
+}, [
+    ['translation:test.0'],
+    ['translation:test.2', { myVar: 'test' }],
+    ['translation:test', { myVar: 'test', joinArrays: '+' }],
+    ['translation:test', { myVar: 'test', joinArrays: '' }],
+    ['recursiveA', { joinArrays: ' ' }],
+    [['search.flagList', 'flagList'], {}],
+    ['keyArray', { count: 1 }],
+    ['keyArray', { count: 2 }],
+    ['translation:test', { myVar: 'test', joinArrays: false }]
+]);
+
+// MARK: translator.translate.test.js (returnDetails)
+
+suite('returnDetails', 'translator.translate.test.js', {
+    lng: 'en', fallbackLng: 'en', ns: 'translation', defaultNS: 'translation',
+    resources: { en: { translation: { test: 'test_en', deep: { test: 'deep_en' }, p_one: 'one', p_other: 'many' } }, de: { translation: { test: 'test_de' } } }
+}, [
+    ['translation:test', { returnDetails: true }],
+    ['test', { returnDetails: true }],
+    ['translation:test', { returnDetails: true, lngs: ['en-US', 'en'] }],
+    ['translation:test', { returnDetails: true, lngs: ['de'] }],
+    ['translation:test', { returnDetails: true, lng: 'de' }],
+    ['translation:test', { returnDetails: true, lng: 'fr' }],
+    ['translation:test', { returnDetails: true, lng: 'en-US' }],
+    ['translation.test', { returnDetails: true, lng: 'en-US', nsSeparator: '.' }],
+    ['translation.deep.test', { returnDetails: true, lng: 'en-US', nsSeparator: '.' }],
+    ['deep.test', { returnDetails: true }],
+    ['translation:test', { returnDetails: true, testParam: 'test-param' }],
+    ['translation:test', { returnDetails: true, replace: { testParam: 'test-param' } }],
+    ['p', { returnDetails: true, count: 2 }],
+    ['p', { returnDetails: true, count: 1, lng: 'de' }],
+    ['missing', { returnDetails: true }],
+    ['missing', { returnDetails: true, defaultValue: 'dv' }]
+]);
+
+// MARK: languageUtils.test.js (supportedLngs, nonExplicitSupportedLngs, getBestMatchFromCodes)
+
+suite('languageUtils/supportedLngs', 'languageUtils.test.js', { fallbackLng: 'en', supportedLngs: ['nb-NO', 'de', 'en'] },
+    [['en'], ['de'], ['de', { fallbackLng: 'fr' }], ['de', { fallbackLng: ['fr', 'en'] }], ['de', { fallbackLng: ['fr', 'de'] }], ['de-CH'], ['nb-NO'], ['nb'], ['fr']],
+    { kind: 'resolveHierarchy' });
+
+suite('languageUtils/nonExplicitSupportedLngs', 'languageUtils.test.js',
+    { fallbackLng: ['en'], supportedLngs: ['de', 'en', 'zh'], nonExplicitSupportedLngs: true },
+    [['en'], ['de'], ['de-AT'], ['zh-HK'], ['zh-CN'], ['fr'], ['fr-CA']], { kind: 'resolveHierarchy' });
+
+suite('languageUtils/bestMatch[A]', 'languageUtils.test.js',
+    { fallbackLng: ['en'], supportedLngs: ['en-US', 'en', 'de-DE', 'zh-Hans', 'zh-Hant'] },
+    [[['en']], [['ru', 'en']], [['en-GB']], [['ru', 'en-GB']], [['de-CH']], [['ru']], [['c']], [['e']], [['user-id']],
+        [['en-AU-SA']], [[]], [['zh-Hant-TW']], [['zh-Hans-TW']]], { kind: 'bestMatch' });
+
+suite('languageUtils/bestMatch[B]', 'languageUtils.test.js',
+    { fallbackLng: ['en'], supportedLngs: ['en', 'fil-PH', 'haw-US', 'pt-BR'] },
+    [[['fi-FI']], [['ha']], [['fil']], [['pt-PT']], [['haw']], [['pt']]], { kind: 'bestMatch' });
+
+suite('languageUtils/bestMatch[C]', 'languageUtils.test.js',
+    { fallbackLng: ['fr'], supportedLngs: ['dev', 'en', 'fr'] },
+    [[['de']], [['ru', 'en']], [['en-GB']], [['ru', 'en-GB']], [['de-CH']], [['ru']], [[]]], { kind: 'bestMatch' });
+
+suite('languageUtils/bestMatch[C,nonExplicit]', 'languageUtils.test.js',
+    { fallbackLng: ['fr'], supportedLngs: ['dev', 'en', 'fr'], nonExplicitSupportedLngs: true },
+    [[['de']], [['ru', 'en']], [['en-GB']], [['ru', 'en-GB']], [['de-CH']], [['ru']], [[]]], { kind: 'bestMatch' });
+
+suite('languageUtils/bestMatch[format]', 'languageUtils.test.js', { fallbackLng: 'dev', supportedLngs: ['en', 'pt-br'] },
+    [[['pt-br']], [['pt-BR']], [['en']]], { kind: 'bestMatch' });
+suite('languageUtils/bestMatch[format,lowerCaseLng]', 'languageUtils.test.js', { fallbackLng: 'dev', supportedLngs: ['en', 'pt-BR'], lowerCaseLng: true },
+    [[['pt-BR']]], { kind: 'bestMatch' });
+suite('languageUtils/bestMatch[format,EN]', 'languageUtils.test.js', { fallbackLng: 'dev', supportedLngs: ['EN', 'pt-BR'] },
+    [[['en']], [['EN']]], { kind: 'bestMatch' });
+suite('languageUtils/bestMatch[format,EN-US]', 'languageUtils.test.js', { fallbackLng: 'dev', supportedLngs: ['EN-US'] },
+    [[['en']]], { kind: 'bestMatch' });

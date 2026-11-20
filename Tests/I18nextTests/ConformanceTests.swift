@@ -125,6 +125,20 @@ enum ConformanceRunner {
         switch scenario.kind {
         case "t":
             let (keys, options) = try translationArguments(scenario)
+            if case .object(let fields) = scenario.options, case .bool(true)? = fields["returnDetails"] {
+                guard keys.count == 1 else { throw Unsupported(reason: "details with several keys") }
+                let details = i18n.details(keys[0], options)
+                return .object([
+                    "res": details.result, "usedKey": .string(details.usedKey),
+                    "exactUsedKey": .string(details.exactUsedKey),
+                    "usedLng": details.usedLng.map(JSONValue.string) ?? .null,
+                    "usedNS": details.usedNS.map(JSONValue.string) ?? .null, "usedParams": .object(details.usedParams),
+                ])
+            }
+            let initReturnsObjects = scenario.initOptions["returnObjects"] == .bool(true)
+            if options.returnObjects == true || initReturnsObjects {
+                return i18n.translateValue(keys, options)
+            }
             return .string(i18n.t(keys, options))
         case "exists":
             let (keys, options) = try translationArguments(scenario)
@@ -137,6 +151,10 @@ enum ConformanceRunner {
                 fallback = try Self.fallback(value)
             }
             return .array(i18n.languageUtils.hierarchy(for: code, fallback: fallback).map(JSONValue.string))
+        case "bestMatch":
+            guard case .array(let items) = scenario.key else { throw Unsupported(reason: "bestMatch arguments") }
+            let match = i18n.languageUtils.bestMatch(from: try items.map(string))
+            return match.map(JSONValue.string) ?? .null
         case "formatCode":
             guard case .string(let code) = scenario.key else { throw Unsupported(reason: "non-string key") }
             return .string(i18n.languageUtils.format(code))
@@ -216,6 +234,14 @@ enum ConformanceRunner {
                 options.pluralSeparator = value.stringValue ?? "_"
             case "returnEmptyString":
                 if case .bool(let flag) = value { options.returnEmptyString = flag }
+            case "returnObjects":
+                if case .bool(let flag) = value { options.returnObjects = flag }
+            case "joinArrays":
+                options.joinArrays = value.stringValue
+            case "supportedLngs":
+                options.supportedLngs = try strings(value)
+            case "nonExplicitSupportedLngs":
+                if case .bool(let flag) = value { options.nonExplicitSupportedLngs = flag }
             case "load":
                 switch value.stringValue {
                 case "languageOnly": options.load = .languageOnly
@@ -309,6 +335,13 @@ enum ConformanceRunner {
                 options.nsSeparator = try separator(setting).map { .custom($0) } ?? .disabled
             case "ignoreJSONStructure":
                 if case .bool(let flag) = setting { options.ignoreJSONStructure = flag }
+            case "returnObjects":
+                if case .bool(let flag) = setting { options.returnObjects = flag }
+            case "joinArrays":
+                options.joinArrays = setting.stringValue
+                if case .bool(false) = setting { options.joinArraysDisabled = true }
+            case "returnDetails":
+                continue
             case "ns":
                 options.ns = try strings(setting)
             case "count":

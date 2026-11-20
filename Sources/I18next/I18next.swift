@@ -13,6 +13,12 @@ public final class I18next: Sendable {
         public var lowerCaseLng = false
         /// Lower-cases codes that aren't well-formed tags too. `nil` leaves them alone, as i18next does by default.
         public var cleanCode: Bool?
+        /// Only these languages are resolved and loaded (`cimode` is always allowed).
+        public var supportedLngs: [String]?
+        /// With `supportedLngs`, accept `de-AT` when `de` is supported.
+        public var nonExplicitSupportedLngs = false
+        /// Chooses the language when `lng` is not set. See ``LanguageDetector``.
+        public var languageDetector: (any LanguageDetector)?
         /// In `cimode`, `t` returns `ns:key` instead of `key`.
         public var appendNamespaceToCIMode = false
         /// Languages to load in addition to the active one (and its fallbacks).
@@ -31,6 +37,10 @@ public final class I18next: Sendable {
         public var pluralSeparator = "_"
         /// When false (i18next's default), an empty string value is treated as missing.
         public var returnEmptyString = false
+        /// Objects and arrays are returned by ``I18next/object(_:_:)`` regardless; this also lets `t` stringify them.
+        public var returnObjects = false
+        /// Joins array resources into a string with this separator when set.
+        public var joinArrays: String?
         public var interpolation = InterpolationOptions()
 
         /// Where missing bundles are loaded from. Without one, only `resources` are available.
@@ -66,7 +76,9 @@ public final class I18next: Sendable {
             fallbackLng: options.fallbackLng,
             load: options.load,
             lowerCaseLng: options.lowerCaseLng,
-            cleanCode: options.cleanCode
+            cleanCode: options.cleanCode,
+            supportedLngs: options.supportedLngs.map { $0.contains("cimode") ? $0 : $0 + ["cimode"] },
+            nonExplicitSupportedLngs: options.nonExplicitSupportedLngs
         )
         self.languageUtils = languageUtils
 
@@ -123,6 +135,19 @@ public final class I18next: Sendable {
     /// Tries the keys in order and uses the first that resolves; if none does, the last key is returned.
     public func t(_ keys: [String], _ options: TranslationOptions = TranslationOptions()) -> String {
         translate(keys, options)
+    }
+
+    /// What the resource holds, with objects and arrays returned (their leaves translated), like `t` with
+    /// `returnObjects: true`. A string resource comes back as a string, a missing key as the key.
+    public func object(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> JSONValue {
+        var options = options
+        options.returnObjects = true
+        return translateValue([key], options)
+    }
+
+    /// `t` with i18next's `returnDetails`: the result plus which key, language and namespace it came from.
+    public func details(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> TranslationDetails {
+        translateDetails([key], options)
     }
 
     public func exists(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> Bool {

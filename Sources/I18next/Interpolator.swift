@@ -347,10 +347,10 @@ struct Interpolator: Sendable {
     // MARK: Helpers
 
     /// The data a template sees: the variables, plus what i18next exposes from the call options themselves.
-    static func data(for call: TranslationOptions) -> [String: JSONValue] {
+    static func data(for call: TranslationOptions, includingContext: Bool = true) -> [String: JSONValue] {
         var data = call.variables
         if let count = call.count { data["count"] = .number(count) }
-        if let context = call.context { data["context"] = .string(context) }
+        if includingContext, let context = call.context { data["context"] = .string(context) }
         return data
     }
 

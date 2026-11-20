@@ -32,17 +32,25 @@ public struct LanguageUtils: Sendable {
     public var lowerCaseLng: Bool
     /// `nil` is i18next's "unset", which behaves like `true` when a code is canonicalized.
     public var cleanCode: Bool?
+    /// Restricts the languages that are resolved and loaded. `nil` (or an empty list) allows everything.
+    public var supportedLngs: [String]?
+    /// With `supportedLngs`, accept `de-AT` when `de` is supported.
+    public var nonExplicitSupportedLngs: Bool
 
     public init(
         fallbackLng: FallbackLanguages = .none,
         load: LoadStrategy = .all,
         lowerCaseLng: Bool = false,
-        cleanCode: Bool? = nil
+        cleanCode: Bool? = nil,
+        supportedLngs: [String]? = nil,
+        nonExplicitSupportedLngs: Bool = false
     ) {
         self.fallbackLng = fallbackLng
         self.load = load
         self.lowerCaseLng = lowerCaseLng
         self.cleanCode = cleanCode
+        self.supportedLngs = supportedLngs
+        self.nonExplicitSupportedLngs = nonExplicitSupportedLngs
     }
 
     // MARK: Codes
@@ -81,6 +89,52 @@ public struct LanguageUtils: Sendable {
         String(code.map { $0 == "_" ? "-" : $0 })
     }
 
+    // MARK: Supported languages
+
+    /// Whether `code` may be resolved and loaded under `supportedLngs`.
+    public func isSupported(_ code: String?) -> Bool {
+        guard var code else { return supportedLngs?.isEmpty ?? true }
+        if load == .languageOnly || nonExplicitSupportedLngs { code = languagePart(code) }
+        guard let supported = supportedLngs, !supported.isEmpty else { return true }
+        let formatted = format(code)
+        return supported.contains { format($0) == formatted }
+    }
+
+    /// The first of `codes` that is supported, else the closest supported language (script, then language part,
+    /// then a regional variant of it), else the first fallback. i18next's `getBestMatchFromCodes`.
+    public func bestMatch(from codes: [String]) -> String? {
+        var found: String?
+        for code in codes where found == nil {
+            let cleaned = format(code)
+            if supportedLngs == nil || isSupported(cleaned) { found = cleaned }
+        }
+
+        if found == nil, let supported = supportedLngs {
+            for code in codes where found == nil {
+                if let script = scriptPart(code), isSupported(script) {
+                    found = script
+                    continue
+                }
+                let languageOnly = languagePart(code)
+                if isSupported(languageOnly) {
+                    found = languageOnly
+                    continue
+                }
+                found = supported.map(format).first { candidate in
+                    if candidate == languageOnly { return true }
+                    if !candidate.contains("-"), !languageOnly.contains("-") { return false }
+                    if let dash = candidate.firstIndex(of: "-"), !languageOnly.contains("-"),
+                        candidate[..<dash] == languageOnly
+                    {
+                        return true
+                    }
+                    return false
+                }
+            }
+        }
+        return found ?? fallbackCodes(fallbackLng, for: nil).first
+    }
+
     // MARK: Fallbacks
 
     /// The fallback languages for `code`. For per-language maps: the exact code, its script part, its formatted
@@ -106,7 +160,7 @@ public struct LanguageUtils: Sendable {
     public func hierarchy(for code: String?, fallback: FallbackLanguages? = nil) -> [String] {
         var codes: [String] = []
         func add(_ candidate: String?) {
-            guard let candidate, !candidate.isEmpty else { return }
+            guard let candidate, !candidate.isEmpty, isSupported(candidate) else { return }
             codes.append(candidate)
         }
 

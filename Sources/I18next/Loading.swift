@@ -7,7 +7,21 @@ extension I18next {
     /// Call once after creating the instance, like `i18next.init()`.
     @discardableResult
     public func initialize() async -> LoadReport {
-        await load(languages: languagesToLoad(for: language), namespaces: namespacesToLoad())
+        if language == nil { await detectLanguage() }
+        return await load(languages: languagesToLoad(for: language), namespaces: namespacesToLoad())
+    }
+
+    /// Asks the language detector for candidates and picks the best supported one. Without a detector, nothing
+    /// changes.
+    func detectLanguage() async {
+        guard let detector = options.languageDetector else { return }
+        let candidates = await detector.detect()
+        guard let chosen = languageUtils.bestMatch(from: candidates) else { return }
+        state.withLock { state in
+            guard state.language == nil else { return }
+            state.language = chosen
+        }
+        await detector.cacheUserLanguage(chosen)
     }
 
     /// Loads `lng` (and its fallbacks), then makes it the active language.
@@ -16,7 +30,11 @@ extension I18next {
     /// the most recently *requested* change wins, whatever order the loads finish in.
     @discardableResult
     public func changeLanguage(_ lng: String?) async -> LoadReport {
-        let formatted = lng.map(languageUtils.format)
+        var requested = lng
+        if requested == nil, let detector = options.languageDetector {
+            requested = languageUtils.bestMatch(from: await detector.detect())
+        }
+        let formatted = requested.map(languageUtils.format)
         let token = state.withLock { state -> Int in
             state.languageChangeToken += 1
             return state.languageChangeToken

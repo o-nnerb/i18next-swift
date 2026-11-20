@@ -120,6 +120,28 @@ extension JSONValue {
         }
     }
 
+    var isArray: Bool {
+        if case .array = self { return true }
+        return false
+    }
+
+    /// The entries of an object (sorted by key) or array, named by key or index.
+    var containerEntries: [(name: String, value: JSONValue)] {
+        switch self {
+        case .object(let fields): return fields.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+        case .array(let items): return items.enumerated().map { (String($0.offset), $0.element) }
+        default: return []
+        }
+    }
+
+    /// An object or array of the same kind as `self`, built from `entries`.
+    func rebuilt(from entries: [(name: String, value: JSONValue)]) -> JSONValue {
+        switch self {
+        case .array: return .array(entries.map(\.value))
+        default: return .object(Dictionary(entries.map { ($0.name, $0.value) }, uniquingKeysWith: { _, last in last }))
+        }
+    }
+
     var isContainer: Bool {
         switch self {
         case .array, .object: return true

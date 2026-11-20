@@ -28,8 +28,14 @@ public struct TranslationOptions: Sendable {
     public var keySeparator: SeparatorSetting?
     public var nsSeparator: SeparatorSetting?
     public var ignoreJSONStructure: Bool?
+    /// Overrides ``I18next/Options/returnObjects``; see ``I18next/object(_:_:)``.
+    public var returnObjects: Bool?
+    /// Joins an array resource into one string with this separator (`""` joins with nothing).
+    public var joinArrays: String?
 
     var nestingDepth = 0
+    /// Set while translating the entries of an array, which must not be joined again.
+    var joinArraysDisabled = false
     /// Set on the options of a nested `$t(...)` call: the key whose template contained it.
     var lastKey: String?
 
@@ -49,7 +55,9 @@ public struct TranslationOptions: Sendable {
         skipInterpolation: Bool = false,
         keySeparator: SeparatorSetting? = nil,
         nsSeparator: SeparatorSetting? = nil,
-        ignoreJSONStructure: Bool? = nil
+        ignoreJSONStructure: Bool? = nil,
+        returnObjects: Bool? = nil,
+        joinArrays: String? = nil
     ) {
         self.lng = lng
         self.lngs = lngs
@@ -67,6 +75,8 @@ public struct TranslationOptions: Sendable {
         self.keySeparator = keySeparator
         self.nsSeparator = nsSeparator
         self.ignoreJSONStructure = ignoreJSONStructure
+        self.returnObjects = returnObjects
+        self.joinArrays = joinArrays
     }
 
     var hasDefaultValue: Bool {
@@ -83,6 +93,8 @@ public struct TranslationOptions: Sendable {
             case ("ns", .string(let text)): ns = [text]
             case ("defaultValue", .string(let text)): defaultValue = text
             case ("ordinal", .bool(let flag)): ordinal = flag
+            case ("returnObjects", .bool(let flag)): returnObjects = flag
+            case ("joinArrays", .string(let text)): joinArrays = text
             case ("keySeparator", .string(let text)): keySeparator = .custom(text)
             case ("keySeparator", .bool(false)): keySeparator = .disabled
             case ("nsSeparator", .string(let text)): nsSeparator = .custom(text)
@@ -104,4 +116,15 @@ public enum SeparatorSetting: Sendable, Hashable, ExpressibleByStringLiteral {
         if case .custom(let text) = self { return text }
         return nil
     }
+}
+
+/// What `I18next.details(_:_:)` reports about a lookup (i18next's `returnDetails`).
+public struct TranslationDetails: Sendable {
+    public let result: JSONValue
+    public let usedKey: String
+    public let exactUsedKey: String
+    public let usedLng: String?
+    public let usedNS: String?
+    /// The variables the translation could use: `defaultVariables`, the call's variables and `count`.
+    public let usedParams: [String: JSONValue]
 }

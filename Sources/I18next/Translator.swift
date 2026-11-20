@@ -12,8 +12,35 @@ extension I18next {
 
     // MARK: translate
 
+    /// The text for `keys`. See ``translateValue(_:_:)`` for objects and arrays.
     func translate(_ keys: [String], _ callOptions: TranslationOptions) -> String {
-        guard let lastKey = keys.last else { return "" }
+        translateCore(keys, callOptions).value.interpolationString
+    }
+
+    /// Like `translate`, but returns what the resource holds: a string, a number or boolean, and, with
+    /// `returnObjects`, an object or array whose leaves are translated.
+    func translateValue(_ keys: [String], _ callOptions: TranslationOptions) -> JSONValue {
+        translateCore(keys, callOptions).value
+    }
+
+    func translateDetails(_ keys: [String], _ callOptions: TranslationOptions) -> TranslationDetails {
+        let (value, resolved) = translateCore(keys, callOptions)
+        var parameters = options.interpolation.defaultVariables
+        for (name, variable) in Interpolator.data(for: callOptions, includingContext: false) {
+            parameters[name] = variable
+        }
+        return TranslationDetails(
+            result: value,
+            usedKey: resolved.usedKey,
+            exactUsedKey: resolved.exactUsedKey ?? resolved.usedKey,
+            usedLng: resolved.usedLng,
+            usedNS: resolved.usedNS,
+            usedParams: parameters
+        )
+    }
+
+    func translateCore(_ keys: [String], _ callOptions: TranslationOptions) -> (value: JSONValue, resolved: Resolved) {
+        guard let lastKey = keys.last else { return (.string(""), Resolved(value: nil, usedKey: "")) }
         let opt = callOptions
         let (key, namespaces) = extractFromKey(lastKey, opt)
         let namespace = namespaces.last ?? ""
@@ -21,30 +48,70 @@ extension I18next {
 
         if lng?.lowercased() == "cimode" {
             let separator = nsSeparator(for: opt) ?? ":"
-            return options.appendNamespaceToCIMode ? "\(namespace)\(separator)\(key)" : key
+            let text = options.appendNamespaceToCIMode ? "\(namespace)\(separator)\(key)" : key
+            let resolved = Resolved(value: nil, usedKey: key, exactUsedKey: key, usedLng: lng, usedNS: namespace)
+            return (.string(text), resolved)
         }
 
-        let resolved = resolve(keys, opt)
+        var resolved = resolve(keys, opt)
+        let found = resolved.value
         let defaultValue = defaultValue(for: opt, lng: lng)
+        // Either switch turns it on; a call can't turn off what the instance enabled.
+        let returnObjects = (opt.returnObjects ?? false) || options.returnObjects
+        let joinArrays = opt.joinArraysDisabled ? nil : (opt.joinArrays ?? options.joinArrays)
+        let separator = keySeparator(for: opt)
 
-        // Objects are not returned (`returnObjects` is off), and a number or boolean reads as its text.
-        var found: JSONValue? = resolved.value
-        if let value = found, value.isContainer { found = nil }
+        // An object or array: returned only with `returnObjects`, with every leaf translated in its own right.
+        var holder = found
+        if found?.isTruthy != true, opt.hasDefaultValue { holder = defaultValue.map(JSONValue.string) }
+        let isObjectHit = holder?.isContainer == true && !(joinArrays != nil && holder?.isArray == true)
 
-        var result: String?
+        if isObjectHit, returnObjects, let holder {
+            guard let separator else { return (holder, resolved) }
+            let prefixKey = holder.isArray ? (resolved.exactUsedKey ?? key) : (resolved.usedKey)
+            var leaves = holder.containerEntries
+            for index in leaves.indices {
+                let name = leaves[index].name
+                let deepKey = "\(prefixKey)\(separator)\(name)"
+                var next = opt
+                next.joinArraysDisabled = true
+                next.ns = namespaces
+                if opt.hasDefaultValue, found?.isTruthy != true { next.defaultValue = nil }
+                let translated = translateValue([deepKey], next)
+                leaves[index].value = translated == .string(deepKey) ? leaves[index].value : translated
+            }
+            return (holder.rebuilt(from: leaves), resolved)
+        }
+
+        if let joinArrays, case .array(let items)? = found {
+            var joined = items.map(\.interpolationString).joined(separator: joinArrays)
+            if !joined.isEmpty {
+                joined = extendTranslation(joined, keys: keys, opt: opt, usedLng: resolved.usedLng)
+            }
+            return (.string(joined), resolved)
+        }
+
+        // Objects that are not returned count as missing.
+        var result: JSONValue? = found
+        if isObjectHit { result = nil }
+
         var usedDefault = false
-        if let value = found, isValidLookup(value) { result = value.interpolationString }
-
-        if result == nil, opt.hasDefaultValue {
+        if !isValidLookup(result), opt.hasDefaultValue {
             usedDefault = true
-            result = defaultValue
+            result = defaultValue.map(JSONValue.string)
         }
-        if result == nil || (result == "" && !options.returnEmptyString && !(usedDefault)) {
-            result = key
+        if !isValidLookup(result), !(usedDefault && result == .string("")) {
+            result = .string(key)
         }
 
-        guard let text = result else { return key }
-        return extendTranslation(text, keys: keys, opt: opt, usedLng: resolved.usedLng)
+        guard let value = result else { return (.string(key), resolved) }
+        switch value {
+        case .string(let text):
+            resolved.value = found
+            return (.string(extendTranslation(text, keys: keys, opt: opt, usedLng: resolved.usedLng)), resolved)
+        default:
+            return (value, resolved)
+        }
     }
 
     /// i18next's default value rules: `defaultValue_zero`, then the category (and for ordinals the cardinal
