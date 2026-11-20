@@ -59,7 +59,7 @@ struct PluralOperands: Sendable, Equatable {
 
     /// Splits `Double.description` into integer and fraction digits, expanding exponent notation
     /// (`1e-05` → `0` / `00001`, `1.5e+16` → `15000000000000000` / ``).
-    private static func digits(of description: String) -> (integer: String, fraction: String) {
+    static func digits(of description: String) -> (integer: String, fraction: String) {
         var mantissa = Substring(description)
         var exponent = 0
         if let marker = description.firstIndex(where: { $0 == "e" || $0 == "E" }) {
@@ -116,7 +116,7 @@ public struct PluralResolver: Sendable {
     /// no ordinal rules, which is what `Intl.PluralRules` falls back to.
     static func rule(for lng: String, ordinal: Bool) -> PluralRule? {
         let table = ordinal ? CLDRPluralData.ordinal : CLDRPluralData.cardinal
-        if let rule = table[lng] ?? table[LanguageUtils.languagePart(lng)] { return rule }
+        if let rule = table[lng] ?? table[LanguageUtils().languagePart(lng)] { return rule }
         return ordinal ? nil : CLDRPluralData.cardinal["en"]
     }
 }

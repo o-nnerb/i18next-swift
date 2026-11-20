@@ -93,14 +93,15 @@ struct LookupTests {
         let i18n = makeI18n()
         #expect(i18n.exists("hello"))
         #expect(!i18n.exists("nope"))
-        #expect(i18n.t("empty") == "")
+        #expect(i18n.t("empty") == "empty")  // an empty string counts as missing, as in i18next
+        #expect(!i18n.exists(""))
 
-        let strict = I18next { o in
+        let lenient = I18next { o in
             o.lng = "en"
-            o.returnEmptyString = false
+            o.returnEmptyString = true
             o.resources = ["en": ["translation": ["empty": ""]]]
         }
-        #expect(strict.t("empty") == "empty")
+        #expect(lenient.t("empty") == "")
     }
 }
 
@@ -166,13 +167,20 @@ struct PluralTests {
 struct InterpolationTests {
     @Test func variablesAreEscapedByDefault() {
         let i18n = makeI18n()
-        #expect(i18n.t("greeting", .init(variables: ["name": "<b>Ann</b>"])) == "Hi &lt;b&gt;Ann&lt;&#x2F;b&gt;!")
+        #expect(i18n.t("greeting", .init(variables: ["name": "<b>Ann</b>"])) == "Hi &lt;b&gt;Ann&lt;/b&gt;!")
         #expect(i18n.t("greeting", .init(variables: ["name": "<b>"], escapeValue: false)) == "Hi <b>!")
         #expect(i18n.t("raw", .init(variables: ["html": "<i>"])) == "<i> vs &lt;i&gt;")
     }
 
-    @Test func missingVariableBecomesEmpty() {
-        #expect(makeI18n().t("greeting") == "Hi !")
+    @Test func missingVariableIsLeftInPlace() {
+        #expect(makeI18n().t("greeting") == "Hi {{name}}!")  // `skipOnVariables`, i18next's default
+
+        let lenient = I18next { o in
+            o.lng = "en"
+            o.interpolation.skipOnVariables = false
+            o.resources = ["en": ["translation": ["greeting": "Hi {{name}}!"]]]
+        }
+        #expect(lenient.t("greeting") == "Hi !")
     }
 
     @Test func nestedVariablePaths() {
@@ -186,7 +194,10 @@ struct InterpolationTests {
     }
 
     @Test func numbersAndBooleans() {
-        let i18n = I18next { $0.resources = ["dev": ["translation": ["k": "{{a}}|{{b}}|{{c}}|{{d}}"]]] }
+        let i18n = I18next {
+            $0.lng = "dev"
+            $0.resources = ["dev": ["translation": ["k": "{{a}}|{{b}}|{{c}}|{{d}}"]]]
+        }
         let out = i18n.t("k", .init(variables: ["a": 3, "b": 2.5, "c": true, "d": nil]))
         #expect(out == "3|2.5|true|")
     }
@@ -210,7 +221,10 @@ struct InterpolationTests {
     }
 
     @Test func unterminatedTokensAreLeftAlone() {
-        let i18n = I18next { $0.resources = ["dev": ["translation": ["a": "x {{oops", "b": "y $t(oops"]]] }
+        let i18n = I18next {
+            $0.lng = "dev"
+            $0.resources = ["dev": ["translation": ["a": "x {{oops", "b": "y $t(oops"]]]
+        }
         #expect(i18n.t("a") == "x {{oops")
         #expect(i18n.t("b") == "y $t(oops")
     }
@@ -219,18 +233,17 @@ struct InterpolationTests {
 @Suite("Resources and languages")
 struct ResourceTests {
     @Test func languageFormatting() {
-        #expect(LanguageUtils.format("pt-br") == "pt-BR")
-        #expect(LanguageUtils.format("zh-hans-cn") == "zh-Hans-CN")
-        #expect(LanguageUtils.format("EN") == "EN")
-        #expect(LanguageUtils.languagePart("pt-BR") == "pt")
-        #expect(LanguageUtils.hierarchy(for: "pt-BR", fallback: ["en", "pt"]) == ["pt-BR", "pt", "en"])
-        #expect(
-            LanguageUtils.hierarchy(for: "fr", fallback: .perLanguage(["fr": ["en"], "default": ["de"]])) == [
-                "fr", "en",
-            ]
-        )
-        #expect(LanguageUtils.hierarchy(for: "es", fallback: .perLanguage(["default": ["de"]])) == ["es", "de"])
-        #expect(LanguageUtils.hierarchy(for: nil, fallback: .none).isEmpty)
+        let utils = LanguageUtils(fallbackLng: ["en"])
+        #expect(utils.format("pt-br") == "pt-BR")
+        #expect(utils.format("zh-hans-cn") == "zh-Hans-CN")
+        #expect(utils.languagePart("pt-BR") == "pt")
+        #expect(utils.hierarchy(for: "pt-BR") == ["pt-BR", "pt", "en"])
+        #expect(utils.hierarchy(for: "zh-Hant-MO") == ["zh-Hant-MO", "zh-Hant", "zh", "en"])
+        #expect(utils.hierarchy(for: "fr", fallback: FallbackLanguages.none) == ["fr"])
+        let perLanguage = LanguageUtils(fallbackLng: .perLanguage(["fr": ["en"], "default": ["de"]]))
+        #expect(perLanguage.hierarchy(for: "fr") == ["fr", "en"])
+        #expect(perLanguage.hierarchy(for: "es") == ["es", "de"])
+        #expect(LanguageUtils(fallbackLng: .none).hierarchy(for: nil).isEmpty)
     }
 
     @Test func storeMerging() {
@@ -250,15 +263,23 @@ struct ResourceTests {
         #expect(store.languages.isEmpty)
     }
 
-    @Test func flatKeysWinWhenIgnoringJSONStructure() {
-        let store = ResourceStore(data: ["en": ["t": ["a.b": "flat", "a": ["b": "nested"]]]])
-        #expect(store.getResource(lng: "en", ns: "t", key: "a.b") == "flat")
+    @Test func nestedKeysWinOverFlatOnes() {
+        // i18next looks the nested path up first; flat keys containing the separator are the fallback.
+        let store = ResourceStore(data: ["en": ["t": ["a.b": "flat", "a": ["b": "nested"], "c.d": "only flat"]]])
+        #expect(store.getResource(lng: "en", ns: "t", key: "a.b") == "nested")
+        #expect(store.getResource(lng: "en", ns: "t", key: "c.d") == "only flat")
+        #expect(store.getResource(lng: "en", ns: "t", key: "c.d", ignoreJSONStructure: false) == nil)
     }
 
     @Test func jsonRoundTrip() throws {
         let value = try JSONValue(json: #"{"a":[1,true,null,"x"],"b":{"c":1.5}}"#)
         #expect(value["b"]?["c"] == 1.5)
         #expect(value.value(at: ["a", "3"]) == "x")
-        #expect(JSONValue.object(["k": [1, 2]]).interpolationString == #"{"k":[1,2]}"#)
+        // What JavaScript's `String(value)` gives.
+        #expect(JSONValue.array([1, [2, 3], nil, "x"]).interpolationString == "1,2,3,,x")
+        #expect(JSONValue.object(["k": 1]).interpolationString == "[object Object]")
+        #expect(JSONValue.number(1e21).interpolationString == "1e+21")
+        #expect(JSONValue.number(0.000001).interpolationString == "0.000001")
+        #expect(JSONValue.number(1.5e-7).interpolationString == "1.5e-7")
     }
 }

@@ -260,10 +260,13 @@ struct BackendLoadingTests {
     }
 
     @Test func loadStrategies() {
-        #expect(LanguageUtils.hierarchy(for: "pt-BR", fallback: ["en"], load: .all) == ["pt-BR", "pt", "en"])
-        #expect(LanguageUtils.hierarchy(for: "pt-BR", fallback: ["en"], load: .currentOnly) == ["pt-BR", "en"])
-        #expect(LanguageUtils.hierarchy(for: "pt-BR", fallback: ["en"], load: .languageOnly) == ["pt", "en"])
-        #expect(LanguageUtils.hierarchy(for: "pt", fallback: ["en"], load: .languageOnly) == ["pt", "en"])
+        func hierarchy(_ code: String, _ load: LoadStrategy) -> [String] {
+            LanguageUtils(fallbackLng: ["en"], load: load).hierarchy(for: code)
+        }
+        #expect(hierarchy("pt-BR", .all) == ["pt-BR", "pt", "en"])
+        #expect(hierarchy("pt-BR", .currentOnly) == ["pt-BR", "en"])
+        #expect(hierarchy("pt-BR", .languageOnly) == ["pt", "en"])
+        #expect(hierarchy("pt", .languageOnly) == ["pt", "en"])
     }
 }
 

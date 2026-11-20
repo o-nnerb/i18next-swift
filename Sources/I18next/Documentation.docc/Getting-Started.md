@@ -26,7 +26,8 @@ let i18n = I18next { options in
 
 ``I18next/t(_:_:)`` looks the key up in the active language, then in its language part (`pt-BR`, then `pt`), then in
 the fallbacks. A key that can't be found comes back as written, or as ``TranslationOptions/defaultValue`` if you
-give one.
+give one. An empty string counts as missing (``I18next/Options/returnEmptyString``), and
+``I18next/Options/fallbackLng`` is off until you set it, as in i18next 27.
 
 ```swift
 i18n.t("hello")                                              // "Olá"
@@ -56,8 +57,9 @@ i18n.t("friend", .init(context: "other"))     // "A friend"
 
 ## Interpolation
 
-Variables are HTML-escaped by default. Use `{{- name}}` in the template, or ``TranslationOptions/escapeValue``, to
-insert a value as is.
+Variables are HTML-escaped by default (`& < > " '`). Use `{{- name}}` in the template, or
+``TranslationOptions/escapeValue``, to insert a value as is. A variable you don't pass leaves `{{name}}` in place
+(``InterpolationOptions/skipOnVariables``).
 
 Values you substitute are never scanned again: a variable containing `{{x}}` or `$t(y)` is inserted literally.
 

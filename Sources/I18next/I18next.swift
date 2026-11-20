@@ -7,8 +7,14 @@ public final class I18next: Sendable {
 
     public struct Options: Sendable {
         public var lng: String?
-        public var fallbackLng: FallbackLanguages = ["dev"]
+        public var fallbackLng: FallbackLanguages = .none
         public var load: LoadStrategy = .all
+        /// `pt-br` → `pt-br` instead of `pt-BR`.
+        public var lowerCaseLng = false
+        /// Lower-cases codes that aren't well-formed tags too. `nil` leaves them alone, as i18next does by default.
+        public var cleanCode: Bool?
+        /// In `cimode`, `t` returns `ns:key` instead of `key`.
+        public var appendNamespaceToCIMode = false
         /// Languages to load in addition to the active one (and its fallbacks).
         public var preload: [String] = []
         public var defaultNS: [String] = ["translation"]
@@ -16,12 +22,15 @@ public final class I18next: Sendable {
         public var ns: [String]?
         public var fallbackNS: [String] = []
         public var resources: ResourceStore.Resources = [:]
-        public var keySeparator: String? = "."
-        public var nsSeparator: String? = ":"
+        /// `nil` switches the separator off (i18next's `keySeparator: false`).
+        public var keySeparator: String? = "." { didSet { userDefinedKeySeparator = true } }
+        public var nsSeparator: String? = ":" { didSet { userDefinedNsSeparator = true } }
+        var userDefinedKeySeparator = false
+        var userDefinedNsSeparator = false
         public var contextSeparator = "_"
         public var pluralSeparator = "_"
-        /// When false, an empty string value is treated as missing.
-        public var returnEmptyString = true
+        /// When false (i18next's default), an empty string value is treated as missing.
+        public var returnEmptyString = false
         public var interpolation = InterpolationOptions()
 
         /// Where missing bundles are loaded from. Without one, only `resources` are available.
@@ -44,6 +53,7 @@ public final class I18next: Sendable {
     public let options: Options
     public let store: ResourceStore
     let plurals: PluralResolver
+    public let languageUtils: LanguageUtils
     let state: Protected<State>
     let connector: BackendConnector?
 
@@ -52,10 +62,17 @@ public final class I18next: Sendable {
         let store = ResourceStore(data: options.resources, keySeparator: options.keySeparator)
         self.store = store
         self.plurals = PluralResolver(separator: options.pluralSeparator)
+        let languageUtils = LanguageUtils(
+            fallbackLng: options.fallbackLng,
+            load: options.load,
+            lowerCaseLng: options.lowerCaseLng,
+            cleanCode: options.cleanCode
+        )
+        self.languageUtils = languageUtils
 
         var namespaces = options.ns ?? options.defaultNS
         for ns in options.defaultNS where !namespaces.contains(ns) { namespaces.append(ns) }
-        self.state = Protected(State(language: options.lng.map(LanguageUtils.format), namespaces: namespaces))
+        self.state = Protected(State(language: options.lng.map(languageUtils.format), namespaces: namespaces))
 
         let usesBackend = options.resources.isEmpty || options.partialBundledLanguages
         self.connector =
@@ -78,13 +95,13 @@ public final class I18next: Sendable {
 
     /// Languages searched for the active language, in priority order.
     public var languages: [String] {
-        LanguageUtils.hierarchy(for: language, fallback: options.fallbackLng, load: options.load)
+        languageUtils.hierarchy(for: language)
     }
 
     /// Switches the language immediately, without touching the backend. Use ``changeLanguage(_:)``
     /// to load the new language's resources first.
     public func setLanguage(_ lng: String?) {
-        let formatted = lng.map(LanguageUtils.format)
+        let formatted = lng.map(languageUtils.format)
         state.withLock { state in
             state.languageChangeToken += 1
             state.language = formatted
@@ -100,12 +117,18 @@ public final class I18next: Sendable {
     // MARK: Translation
 
     public func t(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> String {
-        translate(key, options)
+        translate([key], options)
+    }
+
+    /// Tries the keys in order and uses the first that resolves; if none does, the last key is returned.
+    public func t(_ keys: [String], _ options: TranslationOptions = TranslationOptions()) -> String {
+        translate(keys, options)
     }
 
     public func exists(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> Bool {
-        let (cleanKey, namespace) = extract(key)
-        return resolve(cleanKey, namespace: namespace, options) != nil
+        let resolved = resolve([key], options)
+        guard let value = resolved.value else { return false }
+        return value != .null || isValidLookup(value)
     }
 
     /// A translate function bound to a language and/or namespaces.
@@ -122,7 +145,7 @@ public final class I18next: Sendable {
             var options = options
             options.lng = options.lng ?? lng
             options.ns = options.ns ?? ns
-            return i18n.translate(key, options)
+            return i18n.translate([key], options)
         }
     }
 

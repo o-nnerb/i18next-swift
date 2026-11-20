@@ -109,6 +109,32 @@ extension JSONValue {
         objectValue?[key]
     }
 
+    /// JavaScript truthiness: not null, `false`, `0` or `""`.
+    var isTruthy: Bool {
+        switch self {
+        case .null: return false
+        case .bool(let value): return value
+        case .number(let value): return value != 0 && !value.isNaN
+        case .string(let value): return !value.isEmpty
+        case .array, .object: return true
+        }
+    }
+
+    var isContainer: Bool {
+        switch self {
+        case .array, .object: return true
+        default: return false
+        }
+    }
+
+    /// A string, number or boolean.
+    var isScalar: Bool {
+        switch self {
+        case .bool, .number, .string: return true
+        default: return false
+        }
+    }
+
     /// Walks `path` through objects (by key) and arrays (by index).
     func value(at path: some Collection<String>) -> JSONValue? {
         guard let head = path.first else { return self }
@@ -154,25 +180,34 @@ extension JSONValue {
         return .object(target)
     }
 
-    /// String used when the value is substituted into a translation.
+    /// What JavaScript's `String(value)` gives, which is what i18next substitutes into a translation: `null` is empty,
+    /// arrays are joined with commas, objects are `[object Object]`.
     var interpolationString: String {
         switch self {
-        case .null:
-            return ""
-        case .bool(let value):
-            return value ? "true" : "false"
-        case .string(let value):
-            return value
-        case .number(let value):
-            if value.isFinite, value == value.rounded(), abs(value) < 1e15 {
-                return String(Int64(value))
-            }
-            return "\(value)"
-        case .array, .object:
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-            guard let data = try? encoder.encode(self) else { return "" }
-            return String(decoding: data, as: UTF8.self)
+        case .null: return ""
+        case .bool(let value): return value ? "true" : "false"
+        case .string(let value): return value
+        case .number(let value): return Self.javaScriptNumber(value)
+        case .array(let items): return items.map(\.interpolationString).joined(separator: ",")
+        case .object: return "[object Object]"
         }
+    }
+
+    /// `Number.prototype.toString`: plain digits for 1e-6 ..< 1e21, exponent form outside that range.
+    static func javaScriptNumber(_ value: Double) -> String {
+        if value.isNaN { return "NaN" }
+        if value.isInfinite { return value < 0 ? "-Infinity" : "Infinity" }
+        if value == 0 { return "0" }
+
+        let sign = value < 0 ? "-" : ""
+        let magnitude = abs(value)
+        if magnitude >= 1e21 || magnitude < 1e-6 {
+            let text = "\(magnitude)"  // "1.5e-07", "1e+21"
+            guard let marker = text.firstIndex(of: "e") else { return sign + text }
+            let exponent = Int(text[text.index(after: marker)...].drop { $0 == "+" }) ?? 0
+            return sign + text[..<marker] + "e" + (exponent < 0 ? "-" : "+") + String(abs(exponent))
+        }
+        let (integer, fraction) = PluralOperands.digits(of: "\(magnitude)")
+        return sign + integer + (fraction.isEmpty || fraction == "0" ? "" : "." + fraction)
     }
 }

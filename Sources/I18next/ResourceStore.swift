@@ -23,11 +23,58 @@ public final class ResourceStore: Sendable {
 
     // MARK: Reading
 
-    public func getResource(lng: String, ns: String, key: String) -> JSONValue? {
+    /// Looks `key` up in a bundle, following i18next's `ResourceStore.getResource`: the nested path first, then, when
+    /// `ignoreJSONStructure` is on, a search that also matches keys containing the separator (`"a.b"` stored flat, or
+    /// inside a nested object). `keySeparator` and `ignoreJSONStructure` override the store's for this call.
+    public func getResource(
+        lng: String,
+        ns: String,
+        key: String,
+        keySeparator override: SeparatorSetting? = nil,
+        ignoreJSONStructure ignoreOverride: Bool? = nil
+    ) -> JSONValue? {
         guard let bundle = getResourceBundle(lng: lng, ns: ns) else { return nil }
         if key.isEmpty { return bundle }
-        if ignoreJSONStructure, let flat = bundle[key] { return flat }
-        return bundle.value(at: splitKey(key))
+
+        let separator = override.map(\.value) ?? self.keySeparator
+        let path = separator.flatMap { $0.isEmpty ? nil : key.splitKeepingEmpty(on: $0) } ?? [key]
+        let nested = bundle.value(at: path)
+        if let nested, nested != .null { return nested }
+        guard ignoreOverride ?? ignoreJSONStructure else { return nested }
+        return Self.deepFind(bundle, key, separator: separator)
+    }
+
+    /// i18next's `deepFind`: tolerates keys that contain the separator at any depth.
+    static func deepFind(_ object: JSONValue, _ path: String, separator: String?) -> JSONValue? {
+        guard case .object(let root) = object else { return nil }
+        if let direct = root[path], direct.isTruthy { return direct }
+        guard let separator, !separator.isEmpty else { return root[path] }
+
+        let tokens = path.splitKeepingEmpty(on: separator)
+        var current: JSONValue? = object
+        var index = 0
+        while index < tokens.count {
+            guard let container = current, container.isContainer else { return nil }
+            var next: JSONValue?
+            var candidate = ""
+            var end = index
+            while end < tokens.count {
+                if end != index { candidate += separator }
+                candidate += tokens[end]
+                next = container[candidate]
+                if let found = next {
+                    if found.isScalar, end < tokens.count - 1 {
+                        end += 1
+                        continue
+                    }
+                    index += end - index + 1
+                    break
+                }
+                end += 1
+            }
+            current = next
+        }
+        return current
     }
 
     public func getResourceBundle(lng: String, ns: String) -> JSONValue? {

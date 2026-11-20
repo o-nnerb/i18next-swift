@@ -16,7 +16,7 @@ extension I18next {
     /// the most recently *requested* change wins, whatever order the loads finish in.
     @discardableResult
     public func changeLanguage(_ lng: String?) async -> LoadReport {
-        let formatted = lng.map(LanguageUtils.format)
+        let formatted = lng.map(languageUtils.format)
         let token = state.withLock { state -> Int in
             state.languageChangeToken += 1
             return state.languageChangeToken
@@ -70,9 +70,9 @@ extension I18next {
     }
 
     func languagesToLoad(for code: String?) -> [String] {
-        var codes = LanguageUtils.hierarchy(for: code, fallback: options.fallbackLng, load: options.load)
+        var codes = languageUtils.hierarchy(for: code)
         for preloaded in options.preload {
-            let extra = LanguageUtils.hierarchy(for: preloaded, fallback: .none, load: options.load)
+            let extra = languageUtils.hierarchy(for: preloaded, fallback: FallbackLanguages.none)
             for candidate in extra where !codes.contains(candidate) { codes.append(candidate) }
         }
         // `cimode` is a key-echo mode and `dev` is i18next's placeholder fallback; neither has files to fetch.

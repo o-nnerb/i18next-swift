@@ -52,6 +52,20 @@ o.backend = try HTTPBackend(
 2xx is parsed as JSON; 404/410 are `notFound`; 408/425/429/5xx and network errors are `HTTPTransientError` (retried);
 anything else is final.
 
+## Conformance
+
+`Tests/I18nextTests/ConformanceFixtures.swift` holds 1,166 scenarios taken from the i18next test suite (lookup, plurals,
+context, namespaces, separators, interpolation, nesting, language hierarchy, store lookup), each with the answer
+**i18next 27.2.2 itself gives**. `Scripts/conformance/generate.swift` computes them by running the real i18next inside
+JavaScriptCore, so no Node is needed (macOS only):
+
+```sh
+swift Scripts/conformance/generate.swift path/to/i18next.js 27.2.2 Tests/I18nextTests/ConformanceFixtures.swift
+```
+
+`cases.js` holds only inputs; add a scenario there and regenerate. A known difference is listed, with its reason, in
+`ConformanceTests.swift`, and the run fails if one of them starts matching.
+
 ## Plural rules
 
 `Sources/I18next/CLDRPluralData.swift` is generated from CLDR's `plurals.xml` and `ordinals.xml` (Unicode License v3):
