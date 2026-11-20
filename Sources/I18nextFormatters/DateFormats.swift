@@ -123,6 +123,8 @@ enum DateFormats {
 
     // MARK: relativetime
 
+    #if canImport(Darwin)
+
     private static let units: [String: Calendar.Component] = [
         "second": .second, "minute": .minute, "hour": .hour, "day": .day, "week": .weekOfMonth, "month": .month,
         "quarter": .quarter, "year": .year,
@@ -158,4 +160,10 @@ enum DateFormats {
         guard !text.isEmpty else { throw FormatFailure("\(unitName) is not supported") }  // quarters
         return .string(text)
     }
+    #else
+    /// swift-corelibs-foundation has no `RelativeDateTimeFormatter`, so on other platforms the value is left as it is.
+    static func relativetime(_ value: JSONValue, _ context: I18next.FormatContext) throws -> JSONValue {
+        throw FormatFailure("relative time formatting needs Apple's Foundation")
+    }
+    #endif
 }

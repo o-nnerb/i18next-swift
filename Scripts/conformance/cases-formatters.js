@@ -95,9 +95,11 @@ formatSuite('format/datetime', ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP', 'es
     '{{d, datetime(dateStyle: short; timeStyle: short; timeZone: Asia/Tokyo)}}'
 ], [{ d: __when }]);
 
+// Every datetime template pins `timeZone`, so the expected values don't depend on the machine that generated them.
 formatSuite('format/datetime[bad input]', ['en-US'], [
-    '{{d, datetime}}', '{{d, datetime(dateStyle: long; year: numeric)}}', '{{d, datetime(dateStyle: nope)}}'
-], [{ d: __when }, { d: 'not a date' }, { d: true }]);
+    '{{d, datetime(' + __zone + ')}}', '{{d, datetime(dateStyle: long; year: numeric; ' + __zone + ')}}',
+    '{{d, datetime(dateStyle: nope; ' + __zone + ')}}'
+], [{ d: __when }, { d: 'not a date' }, { d: true }, { d: false }, { d: '1700000000000' }]);
 
 // MARK: relativetime
 

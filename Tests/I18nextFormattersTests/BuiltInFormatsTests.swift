@@ -55,12 +55,19 @@ struct BuiltInFormatsTests {
         #expect(i18n.t("d", .init(variables: ["when": "2023-11-14T22:13:20Z"])) == "November 14, 2023")  // ISO text
     }
 
+    #if canImport(Darwin)
     @Test func relativeTimes() {
         let i18n = makeI18n(["r": "{{n, relativetime(day)}}", "a": "{{n, relativetime(range: day; numeric: auto)}}"])
         #expect(i18n.t("r", .init(variables: ["n": -3])) == "3 days ago")
         #expect(i18n.t("r", .init(variables: ["n": 1])) == "in 1 day")
         #expect(i18n.t("a", .init(variables: ["n": 1])) == "tomorrow")
     }
+    #else
+    @Test func relativeTimesAreLeftAsTheyAreWithoutAppleFoundation() {
+        let i18n = makeI18n(["r": "{{n, relativetime(day)}}"])
+        #expect(i18n.t("r", .init(variables: ["n": -3])) == "-3")
+    }
+    #endif
 
     @Test func lists() {
         let i18n = makeI18n(["l": "{{items, list}}", "o": "{{items, list(type: disjunction)}}"])

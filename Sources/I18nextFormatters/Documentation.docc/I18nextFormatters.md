@@ -66,7 +66,8 @@ The behavior was checked against i18next 27.2.2 on thousands of values, and thes
 - Numbers: `unit` style is not supported; `compact` notation uses the short names only.
 - Dates: a JavaScript number is milliseconds since the epoch, as in i18next. Text is also read as an ISO 8601 date,
   which JSON has no type for. Time zone *names* can differ (`GMT` where `Intl` says `UTC`).
-- Relative times need whole numbers and have no `quarter` unit.
+- Relative times need whole numbers and have no `quarter` unit, and exist only on Apple platforms: swift-corelibs-foundation
+  has no `RelativeDateTimeFormatter`, so elsewhere the value is left as it is.
 - Lists have no `unit` type, and their items must be strings.
 
 A value a formatter can't handle is left as it was, as in i18next. Results can differ between platforms and OS
