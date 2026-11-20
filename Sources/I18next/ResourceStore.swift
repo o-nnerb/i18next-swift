@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 /// Thread-safe storage of translation resources, indexed by language and namespace.
 public final class ResourceStore: Sendable {
     public typealias Resources = [String: [String: JSONValue]]

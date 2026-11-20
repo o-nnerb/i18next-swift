@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 /// Backend-driven loading. All of these are no-ops (returning an empty report) when no backend is in use.
 extension I18next {
     /// Loads the active language, its fallbacks and `preload` for every configured namespace.

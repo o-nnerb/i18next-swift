@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 /// Fallback language configuration (`fallbackLng`).
 public enum FallbackLanguages: Sendable, Hashable {
     case none

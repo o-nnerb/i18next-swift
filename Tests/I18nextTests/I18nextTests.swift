@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 import Testing
 
 @testable import I18next

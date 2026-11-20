@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 internal import SwiftAsyncStream
 
 /// Mutable state guarded by a `Lock`. Stands in for `Synchronization.Mutex`, which needs macOS 15 / iOS 18.

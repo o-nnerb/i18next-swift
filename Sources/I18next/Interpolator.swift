@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 public struct InterpolationOptions: Sendable {
     /// HTML-escape interpolated values. Override per call with `TranslationOptions.escapeValue`.
     public var escapeValue = true

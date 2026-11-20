@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 internal import SwiftAsyncStream
 
 /// Loads bundles from a ``Backend`` into the ``ResourceStore``.

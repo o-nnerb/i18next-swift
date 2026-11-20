@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 // The stdlib's `firstRange(of:)`, `split(separator: String)` and `replacing(_:with:)` (`_StringProcessing`)
 // require macOS 13 / iOS 16. These are the subset the library needs, available on the package minimums.
 

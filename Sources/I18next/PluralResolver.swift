@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 /// CLDR plural categories.
 public enum PluralCategory: String, Sendable, CaseIterable {
     case zero, one, two, few, many, other

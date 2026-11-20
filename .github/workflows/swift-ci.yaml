@@ -37,8 +37,13 @@ jobs:
       platform: xcode-27
 
       # Step 1 – Header Validation
-      # Off until the package license is decided. The generated CLDR files carry Unicode's header, not ours.
-      enable-header-validation: false
+      # Two accepted headers, matched as regular expressions: ours, and the Unicode one that the
+      # generated CLDR files (Scripts/generate-plurals.py) carry.
+      enable-header-validation: true
+      header-use-regex: true
+      header-template: |
+        // Copyright (\(c\) 2026 Brenno Giovanini de Moura|© 1991-[0-9]{4} Unicode, Inc\.)
+        // SPDX-License-Identifier: (MIT|Unicode-3\.0)
 
       # Step 2 – Format (generated files opt out with `swift-format-ignore-file`)
       enable-format: true

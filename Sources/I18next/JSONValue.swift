@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 // Apple SDKs ship only the umbrella `Foundation` (built from the same swift-foundation sources);
 // every other platform exposes `FoundationEssentials` directly. This is the only file that needs either.
 #if canImport(FoundationEssentials)

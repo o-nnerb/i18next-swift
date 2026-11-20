@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 /// Per-call options for `I18next.t(_:_:)`.
 public struct TranslationOptions: Sendable {
     /// Overrides the active language for this call.

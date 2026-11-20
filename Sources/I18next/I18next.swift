@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 public final class I18next: Sendable {
     /// Custom `{{value, name(arg: x)}}` formatter. Receives the raw value, the active language and the parsed arguments.
     public typealias Format = @Sendable (_ value: JSONValue, _ lng: String?, _ arguments: [String: String]) -> String

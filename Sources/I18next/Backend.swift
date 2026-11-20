@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Brenno Giovanini de Moura
+// SPDX-License-Identifier: MIT
+
 /// Source of translation resources, read one `(language, namespace)` bundle at a time.
 ///
 /// Throw an error that also conforms to ``RetryableBackendError`` for transient failures
