@@ -96,21 +96,115 @@ extension I18next {
         if isObjectHit { result = nil }
 
         var usedDefault = false
+        var usedKey = false
         if !isValidLookup(result), opt.hasDefaultValue {
             usedDefault = true
             result = defaultValue.map(JSONValue.string)
         }
         if !isValidLookup(result), !(usedDefault && result == .string("")) {
+            usedKey = true
             result = .string(key)
         }
 
         guard let value = result else { return (.string(key), resolved) }
-        switch value {
-        case .string(let text):
-            resolved.value = found
-            return (.string(extendTranslation(text, keys: keys, opt: opt, usedLng: resolved.usedLng)), resolved)
-        default:
-            return (value, resolved)
+        guard case .string(let text) = value else { return (value, resolved) }
+        resolved.value = found
+
+        // A key that was not found (or whose text differs from the default given) is reported before interpolation.
+        let updateMissing = opt.hasDefaultValue && defaultValue != text && options.updateMissing
+        if !isObjectHit, usedKey || usedDefault || updateMissing {
+            reportMissing(
+                key: key,
+                namespace: namespace,
+                opt: opt,
+                lng: lng,
+                text: text,
+                defaultValue: defaultValue,
+                isUpdate: updateMissing
+            )
+        }
+
+        var output = extendTranslation(text, keys: keys, opt: opt, usedLng: resolved.usedLng)
+        let namespaceSeparator = nsSeparator(for: opt) ?? ":"
+        if usedKey, output == key, options.appendNamespaceToMissingKey {
+            output = "\(namespace)\(namespaceSeparator)\(key)"
+        }
+        if usedKey || usedDefault, let parse = options.parseMissingKeyHandler {
+            let reported = options.appendNamespaceToMissingKey ? "\(namespace)\(namespaceSeparator)\(key)" : key
+            output = parse(reported, usedDefault ? output : nil, opt)
+        }
+        return (.string(output), resolved)
+    }
+
+    // MARK: missing keys
+
+    /// i18next's `saveMissing`: hands the key to `missingKeyHandler` (or the backend) once per language, and per plural
+    /// form when `saveMissingPlurals` is on, then emits `missingKey`.
+    private func reportMissing(
+        key: String,
+        namespace: String,
+        opt: TranslationOptions,
+        lng: String?,
+        text: String,
+        defaultValue: String?,
+        isUpdate: Bool
+    ) {
+        guard options.saveMissing else { return }
+
+        let current = opt.lng ?? language
+        let fallbackLngs = languageUtils.fallbackCodes(options.fallbackLng, for: current)
+        let languages: [String]
+        switch options.saveMissingTo {
+        case .fallback where !fallbackLngs.isEmpty: languages = fallbackLngs
+        case .all: languages = languageUtils.hierarchy(for: current)
+        default: languages = current.map { [$0] } ?? []
+        }
+
+        func send(_ targets: [String], _ missingKey: String, _ specific: String?) {
+            let fallbackValue = (opt.hasDefaultValue && specific != text) ? specific : text
+            let missing = MissingKey(
+                languages: targets,
+                namespace: namespace,
+                key: missingKey,
+                fallbackValue: fallbackValue,
+                isUpdate: isUpdate
+            )
+            if let handler = options.missingKeyHandler {
+                handler(missing)
+            } else {
+                saveMissing(missing)
+            }
+            hub.emit(.missingKey(missing, value: text))
+        }
+
+        guard options.saveMissingPlurals, let count = opt.count else {
+            send(languages, key, defaultValue)
+            return
+        }
+
+        let zeroNeeded = count == 0 && !opt.ordinal
+        for language in languages {
+            var categories = plurals.categories(for: language, ordinal: opt.ordinal)
+            if zeroNeeded, opt.defaultValues[.zero]?.isEmpty == false, !categories.contains(.zero) {
+                categories.append(.zero)
+            }
+            for category in categories {
+                let form = opt.ordinal ? opt.ordinalDefaultValues[category] : opt.defaultValues[category]
+                let suffix =
+                    options.pluralSeparator + (opt.ordinal ? "ordinal" + options.pluralSeparator : "")
+                    + category.rawValue
+                let specific = (form?.isEmpty == false ? form : nil) ?? defaultValue
+                send([language], key + suffix, specific)
+            }
+        }
+    }
+
+    /// Without a `missingKeyHandler`: lets the backend create the key and keeps it in the store, as i18next does.
+    func saveMissing(_ missing: MissingKey) {
+        guard !missing.key.isEmpty else { return }
+        connector?.create(missing)
+        if let first = missing.languages.first, let value = missing.fallbackValue {
+            store.addResource(lng: first, ns: missing.namespace, key: missing.key, value: .string(value))
         }
     }
 

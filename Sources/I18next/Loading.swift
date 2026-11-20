@@ -8,7 +8,9 @@ extension I18next {
     @discardableResult
     public func initialize() async -> LoadReport {
         if language == nil { await detectLanguage() }
-        return await load(languages: languagesToLoad(for: language), namespaces: namespacesToLoad())
+        let report = await load(languages: languagesToLoad(for: language), namespaces: namespacesToLoad())
+        hub.emit(.initialized)
+        return report
     }
 
     /// Asks the language detector for candidates and picks the best supported one. Without a detector, nothing
@@ -35,6 +37,7 @@ extension I18next {
             requested = languageUtils.bestMatch(from: await detector.detect())
         }
         let formatted = requested.map(languageUtils.format)
+        hub.emit(.languageChanging(formatted))
         let token = state.withLock { state -> Int in
             state.languageChangeToken += 1
             return state.languageChangeToken
@@ -43,10 +46,12 @@ extension I18next {
         let report = await load(languages: languagesToLoad(for: formatted), namespaces: namespacesToLoad())
 
         guard !Task.isCancelled else { return report }
-        state.withLock { state in
-            guard state.languageChangeToken == token else { return }
+        let applied = state.withLock { state -> Bool in
+            guard state.languageChangeToken == token else { return false }
             state.language = formatted
+            return true
         }
+        if applied { hub.emit(.languageChanged(formatted)) }
         return report
     }
 

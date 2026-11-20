@@ -7,6 +7,25 @@
 /// (network timeouts, 5xx); any other error is final for that bundle.
 public protocol Backend: Sendable {
     func read(language: String, namespace: String) async throws -> JSONValue
+
+    /// Stores a key that `t` could not find (`Options.saveMissing`). The default does nothing.
+    func create(
+        languages: [String],
+        namespace: String,
+        key: String,
+        fallbackValue: String?,
+        isUpdate: Bool
+    ) async throws
+}
+
+extension Backend {
+    public func create(
+        languages: [String],
+        namespace: String,
+        key: String,
+        fallbackValue: String?,
+        isUpdate: Bool
+    ) async throws {}
 }
 
 /// Marks a backend error as transient, so the connector retries the read with exponential back-off.

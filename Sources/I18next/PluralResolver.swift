@@ -112,9 +112,22 @@ public struct PluralResolver: Sendable {
         return separator + (ordinal ? "ordinal" + separator : "") + category.rawValue
     }
 
+    /// The plural forms the language has, in CLDR order (what `Intl.PluralRules` reports as `pluralCategories`).
+    public func categories(for code: String, ordinal: Bool = false) -> [PluralCategory] {
+        let lng = code == "dev" ? "en" : code
+        let table = ordinal ? CLDRPluralData.ordinalCategories : CLDRPluralData.cardinalCategories
+        return table[lng] ?? table[LanguageUtils().languagePart(lng)] ?? table["en"] ?? []
+    }
+
+    /// The suffixes of every plural form the language has: `_zero`, `_one`, … (`_ordinal_one`, …).
+    public func suffixes(for lng: String, ordinal: Bool = false) -> [String] {
+        categories(for: lng, ordinal: ordinal).map { separator + (ordinal ? "ordinal" + separator : "") + $0.rawValue }
+    }
+
     /// The exact tag (`pt-PT`), then its language (`pt`). An unknown language gets English cardinal rules and
     /// no ordinal rules, which is what `Intl.PluralRules` falls back to.
-    static func rule(for lng: String, ordinal: Bool) -> PluralRule? {
+    static func rule(for code: String, ordinal: Bool) -> PluralRule? {
+        let lng = code == "dev" ? "en" : code  // i18next's placeholder language uses English rules
         let table = ordinal ? CLDRPluralData.ordinal : CLDRPluralData.cardinal
         if let rule = table[lng] ?? table[LanguageUtils().languagePart(lng)] { return rule }
         return ordinal ? nil : CLDRPluralData.cardinal["en"]

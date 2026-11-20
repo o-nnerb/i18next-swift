@@ -80,14 +80,12 @@ Compact-notation operands (`c`, `e`) are always 0, as for any plain number.
 
 ## Status
 
-Implemented: resource store, language hierarchy and `load` strategy, CLDR 49 plurals (cardinal for 227 locales,
-ordinal for 110, generated), context, namespaces, interpolation with escaping, nesting, custom formats, `getFixedT`,
-async backends.
+Implemented: resource store, language hierarchy (`load`, `supportedLngs`, script parts, per-language fallbacks),
+CLDR 49 plurals (cardinal for 227 locales, ordinal for 110, generated), context, namespaces, interpolation with
+escaping, nesting, `returnObjects`, `joinArrays`, `returnDetails`, custom formats, `getFixedT`, async backends,
+language detection, events, `saveMissing` with `missingKeyHandler` / backend `create`, and conformance with
+i18next 27.2.2 (1,317 scenarios).
 
-Not yet: language detectors, events, `returnObjects`, `saveMissing`, built-in
-`number`/`datetime`/`list` formatters (planned as `I18nextFormatters` on `FoundationInternationalization`).
-
-## License
-
-MIT, like [i18next](https://github.com/i18next/i18next), whose copyright notice it keeps: see `LICENSE`.
-The CLDR plural data is under the Unicode License v3: see `THIRD_PARTY_NOTICES.md`.
+Not yet: built-in `number`/`datetime`/`list` formatters (planned as `I18nextFormatters` on
+`FoundationInternationalization`), `postProcess`, `i18nFormat`, `overloadTranslationOptionHandler`, `hasLoadedNamespace`
+checks, ICU-driven BCP 47 aliases beyond a small table (`sgn-BE-FR` → `sfb`).

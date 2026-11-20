@@ -182,7 +182,7 @@ def function_body(rules):
 
 
 def generate_table(kind, groups):
-    functions, by_body, table = [], {}, {}
+    functions, by_body, table, category_table = [], {}, {}, {}
     for locales, rules in groups:
         uses_operands, body = function_body(rules)
         if body not in by_body:
@@ -194,12 +194,23 @@ def generate_table(kind, groups):
                 f"    private static func {name}(_ {parameter}: PluralOperands) -> PluralCategory {{\n{body}\n    }}\n"
             )
             by_body[body] = name
+        order = ["zero", "one", "two", "few", "many", "other"]
+        present = [c for c in order if c == "other" or any(count == c for count, *_ in rules)]
         for locale in locales:
             if locale != "root":
                 table[locale] = by_body[body]
+                category_table[locale] = present
 
     entries = ",\n".join(f'        "{locale}": {table[locale]}' for locale in sorted(table))
-    return "\n".join(functions), f"    static let {kind}: [String: PluralRule] = [\n{entries},\n    ]\n", len(by_body), len(table)
+    names = ",\n".join(
+        f'        "{locale}": [{", ".join("." + c for c in category_table[locale])}]' for locale in sorted(table)
+    )
+    text = (
+        f"    static let {kind}: [String: PluralRule] = [\n{entries},\n    ]\n\n"
+        f"    /// The categories each {kind} rule can produce, in CLDR order (what `Intl.PluralRules` reports).\n"
+        f"    static let {kind}Categories: [String: [PluralCategory]] = [\n{names},\n    ]\n"
+    )
+    return "\n".join(functions), text, len(by_body), len(table)
 
 
 def write_data(version, year, cardinal, ordinal, out):

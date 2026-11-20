@@ -121,6 +121,7 @@ struct ConformanceTests {
 
 enum ConformanceRunner {
     static func run(_ scenario: ConformanceCase) throws -> JSONValue {
+        if scenario.kind == "missing" { return try runMissing(scenario) }
         let i18n = try makeInstance(scenario.initOptions)
         switch scenario.kind {
         case "t":
@@ -192,6 +193,28 @@ enum ConformanceRunner {
         }
     }
 
+    /// Runs `t` and records every key the `missingKeyHandler` receives.
+    private static func runMissing(_ scenario: ConformanceCase) throws -> JSONValue {
+        let recorder = Protected<[JSONValue]>([])
+        let i18n = try makeInstance(scenario.initOptions) { options in
+            options.missingKeyHandler = { missing in
+                recorder.withLock {
+                    $0.append(
+                        .object([
+                            "languages": .array(missing.languages.map(JSONValue.string)),
+                            "namespace": .string(missing.namespace), "key": .string(missing.key),
+                            "fallbackValue": missing.fallbackValue.map(JSONValue.string) ?? .null,
+                            "isUpdate": .bool(missing.isUpdate),
+                        ])
+                    )
+                }
+            }
+        }
+        let (keys, options) = try translationArguments(scenario)
+        let result = i18n.t(keys, options)
+        return .object(["result": .string(result), "calls": .array(recorder.withLock { $0 })])
+    }
+
     private static func translationArguments(_ scenario: ConformanceCase) throws -> ([String], TranslationOptions) {
         let keys: [String]
         switch scenario.key {
@@ -204,7 +227,8 @@ enum ConformanceRunner {
 
     // MARK: init options
 
-    static func makeInstance(_ init: JSONValue) throws -> I18next {
+    static func makeInstance(_ init: JSONValue, configure: (inout I18next.Options) -> Void = { _ in }) throws -> I18next
+    {
         guard case .object(let fields) = `init` else { throw Unsupported(reason: "init is not an object") }
         var options = I18next.Options()
 
@@ -238,6 +262,21 @@ enum ConformanceRunner {
                 if case .bool(let flag) = value { options.returnObjects = flag }
             case "joinArrays":
                 options.joinArrays = value.stringValue
+            case "saveMissing":
+                if case .bool(let flag) = value { options.saveMissing = flag }
+            case "saveMissingPlurals":
+                if case .bool(let flag) = value { options.saveMissingPlurals = flag }
+            case "updateMissing":
+                if case .bool(let flag) = value { options.updateMissing = flag }
+            case "appendNamespaceToMissingKey":
+                if case .bool(let flag) = value { options.appendNamespaceToMissingKey = flag }
+            case "saveMissingTo":
+                switch value.stringValue {
+                case "current": options.saveMissingTo = .current
+                case "all": options.saveMissingTo = .all
+                case "fallback": options.saveMissingTo = .fallback
+                default: throw Unsupported(reason: "saveMissingTo \(value)")
+                }
             case "supportedLngs":
                 options.supportedLngs = try strings(value)
             case "nonExplicitSupportedLngs":
@@ -259,6 +298,7 @@ enum ConformanceRunner {
                 throw Unsupported(reason: "init option `\(name)`")
             }
         }
+        configure(&options)
         return I18next(options)
     }
 

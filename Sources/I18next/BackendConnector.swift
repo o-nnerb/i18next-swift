@@ -26,11 +26,18 @@ final class BackendConnector: Sendable {
     private let options: BackendOptions
     private let readSlots: AsyncSemaphore
     private let state = Protected(State())
+    private let onEvent: @Sendable (I18nextEvent) -> Void
 
-    init(backend: any Backend, store: ResourceStore, options: BackendOptions) {
+    init(
+        backend: any Backend,
+        store: ResourceStore,
+        options: BackendOptions,
+        onEvent: @escaping @Sendable (I18nextEvent) -> Void = { _ in }
+    ) {
         self.backend = backend
         self.store = store
         self.options = options
+        self.onEvent = onEvent
         self.readSlots = AsyncSemaphore(permits: max(1, options.maxParallelReads))
     }
 
@@ -61,9 +68,25 @@ final class BackendConnector: Sendable {
             case .failed(let failure): report.failures.append(failure)
             }
         }
+        for key in report.loaded { onEvent(.loaded(key)) }
+        for failure in report.failures { onEvent(.failedLoading(failure)) }
         report.loaded.sort { $0.description < $1.description }
         report.failures.sort { $0.key.description < $1.key.description }
         return report
+    }
+
+    /// Asks the backend to create a key `t` could not find. Fire and forget, as in i18next.
+    func create(_ missing: MissingKey) {
+        let backend = backend
+        Task {
+            try? await backend.create(
+                languages: missing.languages,
+                namespace: missing.namespace,
+                key: missing.key,
+                fallbackValue: missing.fallbackValue,
+                isUpdate: missing.isUpdate
+            )
+        }
     }
 
     private func ensureLoaded(_ key: ResourceKey, force: Bool) async -> Outcome {

@@ -52,9 +52,20 @@ Translating is synchronous; only loading resources from a ``Backend`` is asynchr
 
 ### Languages and fallbacks
 
+- <doc:Language-Detection>
 - ``FallbackLanguages``
 - ``LoadStrategy``
 - ``LanguageUtils``
+- ``LanguageDetector``
+- ``SystemLanguageDetector``
+- ``SeparatorSetting``
+- ``TranslationDetails``
+
+### Events and missing keys
+
+- <doc:Events-and-Missing-Keys>
+- ``I18nextEvent``
+- ``MissingKey``
 
 ### Loading resources
 

@@ -7,7 +7,7 @@
 //     init     i18next init options (JSON only: no functions)
 //     tests    [[key, options?], ...]
 //     options  { kind }, one of: t (default), exists, getResource, resolveHierarchy, formatCode, languagePart, pluralSuffix,
-//              bestMatch
+//              bestMatch, missing (runs `t` and also records every call the `missingKeyHandler` receives)
 
 var __suites = [];
 
@@ -64,8 +64,18 @@ function __run() {
             };
             try {
                 var instance = i18next.createInstance();
-                instance.init(Object.assign({ initAsync: false, debug: false }, __clone(s.init)));
-                var result = __call(instance, kind, key, options);
+                var init = Object.assign({ initAsync: false, debug: false }, __clone(s.init));
+                var calls = [];
+                if (kind === 'missing') {
+                    init.missingKeyHandler = function (languages, namespace, missingKey, fallbackValue, isUpdate) {
+                        calls.push({
+                            languages: languages, namespace: namespace, key: missingKey,
+                            fallbackValue: fallbackValue === undefined ? null : fallbackValue, isUpdate: isUpdate
+                        });
+                    };
+                }
+                instance.init(init);
+                var result = kind === 'missing' ? { result: instance.t(key, __clone(options) || {}), calls: calls } : __call(instance, kind, key, options);
                 record.expected = result === undefined ? null : result;
             } catch (error) {
                 record.error = String(error);

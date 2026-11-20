@@ -17,6 +17,19 @@ public final class I18next: Sendable {
         public var supportedLngs: [String]?
         /// With `supportedLngs`, accept `de-AT` when `de` is supported.
         public var nonExplicitSupportedLngs = false
+        /// Reports keys that `t` could not find, to `missingKeyHandler` or the backend.
+        public var saveMissing = false
+        public var saveMissingTo: SaveMissingTo = .fallback
+        /// With a count, report every plural form of the language instead of the bare key.
+        public var saveMissingPlurals = true
+        /// Also report keys that exist but whose text differs from the `defaultValue` given.
+        public var updateMissing = false
+        /// A missing key comes back as `ns:key`.
+        public var appendNamespaceToMissingKey = false
+        /// Receives every key reported by `saveMissing`; without it the backend's `create` is used.
+        public var missingKeyHandler: (@Sendable (MissingKey) -> Void)?
+        /// Maps a missing key (and the default value, when one was used) to the text `t` returns.
+        public var parseMissingKeyHandler: (@Sendable (String, String?, TranslationOptions) -> String)?
         /// Chooses the language when `lng` is not set. See ``LanguageDetector``.
         public var languageDetector: (any LanguageDetector)?
         /// In `cimode`, `t` returns `ns:key` instead of `key`.
@@ -52,6 +65,15 @@ public final class I18next: Sendable {
         public init() {}
     }
 
+    /// Which languages `saveMissing` reports a key for.
+    public enum SaveMissingTo: Sendable {
+        /// The fallback languages (the current one when there are none).
+        case fallback
+        case current
+        /// The whole resolution hierarchy.
+        case all
+    }
+
     struct State: Sendable {
         var language: String?
         var namespaces: [String]
@@ -66,10 +88,18 @@ public final class I18next: Sendable {
     public let languageUtils: LanguageUtils
     let state: Protected<State>
     let connector: BackendConnector?
+    let hub: EventHub
 
     public init(_ options: Options = Options()) {
         self.options = options
-        let store = ResourceStore(data: options.resources, keySeparator: options.keySeparator)
+        let hub = EventHub()
+        self.hub = hub
+        let store = ResourceStore(
+            data: options.resources,
+            keySeparator: options.keySeparator,
+            ignoreJSONStructure: true,
+            onChange: { hub.emit($0) }
+        )
         self.store = store
         self.plurals = PluralResolver(separator: options.pluralSeparator)
         let languageUtils = LanguageUtils(
@@ -89,7 +119,14 @@ public final class I18next: Sendable {
         let usesBackend = options.resources.isEmpty || options.partialBundledLanguages
         self.connector =
             usesBackend
-            ? options.backend.map { BackendConnector(backend: $0, store: store, options: options.backendOptions) }
+            ? options.backend.map {
+                BackendConnector(
+                    backend: $0,
+                    store: store,
+                    options: options.backendOptions,
+                    onEvent: { hub.emit($0) }
+                )
+            }
             : nil
     }
 
@@ -98,6 +135,12 @@ public final class I18next: Sendable {
         configure(&options)
         self.init(options)
     }
+
+    // MARK: Events
+
+    /// A stream of what happens to this instance: loading, language changes, missing keys, store changes. Every call
+    /// returns an independent stream that sees events from the moment it is created.
+    public var events: AsyncStream<I18nextEvent> { hub.stream() }
 
     // MARK: Language
 
@@ -118,6 +161,7 @@ public final class I18next: Sendable {
             state.languageChangeToken += 1
             state.language = formatted
         }
+        hub.emit(.languageChanged(formatted))
     }
 
     // MARK: Formats

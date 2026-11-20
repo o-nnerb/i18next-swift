@@ -24,7 +24,7 @@ let i18n = I18next { options in
 
 ## Translate
 
-``I18next/t(_:_:)`` looks the key up in the active language, then in its language part (`pt-BR`, then `pt`), then in
+`t` looks the key up in the active language, then in its language part (`pt-BR`, then `pt`), then in
 the fallbacks. A key that can't be found comes back as written, or as ``TranslationOptions/defaultValue`` if you
 give one. An empty string counts as missing (``I18next/Options/returnEmptyString``), and
 ``I18next/Options/fallbackLng`` is off until you set it, as in i18next 27.
@@ -75,6 +75,18 @@ Nest other translations with `$t(key)`, optionally with options:
 
 ```swift
 i18n.addFormat("uppercase") { value, _, _ in value.interpolationString.uppercased() }
+```
+
+## Arrays and objects
+
+`t` returns text. Use ``I18next/object(_:_:)`` for a resource that holds an array or an object: it returns the
+structure with every leaf translated. ``TranslationOptions/joinArrays`` makes `t` join an array into one string, and
+``I18next/details(_:_:)`` reports which key, language and namespace a result came from.
+
+```swift
+// "steps": ["Open {{app}}", "Sign in"]
+i18n.object("steps", .init(variables: ["app": "Mail"]))   // ["Open Mail", "Sign in"]
+i18n.t("steps", .init(variables: ["app": "Mail"], joinArrays: " → "))
 ```
 
 ## Changing the language

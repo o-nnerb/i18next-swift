@@ -10,15 +10,27 @@ public final class ResourceStore: Sendable {
     public let ignoreJSONStructure: Bool
 
     private let storage: Protected<Resources>
+    /// Told about every change, after it was made.
+    private let onChange: (@Sendable (I18nextEvent) -> Void)?
 
-    public init(
+    public convenience init(
         data: Resources = [:],
         keySeparator: String? = ".",
         ignoreJSONStructure: Bool = true
     ) {
+        self.init(data: data, keySeparator: keySeparator, ignoreJSONStructure: ignoreJSONStructure, onChange: nil)
+    }
+
+    init(
+        data: Resources,
+        keySeparator: String?,
+        ignoreJSONStructure: Bool,
+        onChange: (@Sendable (I18nextEvent) -> Void)?
+    ) {
         self.storage = Protected(data)
         self.keySeparator = keySeparator
         self.ignoreJSONStructure = ignoreJSONStructure
+        self.onChange = onChange
     }
 
     // MARK: Reading
@@ -104,6 +116,11 @@ public final class ResourceStore: Sendable {
         deep: Bool = false,
         overwrite: Bool = false
     ) {
+        setResource(lng: lng, ns: ns, key: key, value: value, deep: deep, overwrite: overwrite)
+        onChange?(.added(language: lng, namespace: ns))
+    }
+
+    private func setResource(lng: String, ns: String, key: String, value: JSONValue, deep: Bool, overwrite: Bool) {
         let path = splitKey(key)
         storage.withLock { resources in
             let bundle = resources[lng]?[ns] ?? .object([:])
@@ -119,8 +136,9 @@ public final class ResourceStore: Sendable {
 
     public func addResources(lng: String, ns: String, resources: [String: JSONValue]) {
         for (key, value) in resources {
-            addResource(lng: lng, ns: ns, key: key, value: value)
+            setResource(lng: lng, ns: ns, key: key, value: value, deep: false, overwrite: false)
         }
+        onChange?(.added(language: lng, namespace: ns))
     }
 
     public func addResourceBundle(
@@ -140,11 +158,13 @@ public final class ResourceStore: Sendable {
             }
             all[lng, default: [:]][ns] = merged
         }
+        onChange?(.added(language: lng, namespace: ns))
     }
 
     /// Replaces the bundle outright (used when reloading from a backend).
     public func setResourceBundle(lng: String, ns: String, resources: JSONValue) {
         storage.withLock { $0[lng, default: [:]][ns] = resources }
+        onChange?(.added(language: lng, namespace: ns))
     }
 
     public func removeResourceBundle(lng: String, ns: String) {
@@ -152,6 +172,7 @@ public final class ResourceStore: Sendable {
             all[lng]?[ns] = nil
             if all[lng]?.isEmpty == true { all[lng] = nil }
         }
+        onChange?(.removed(language: lng, namespace: ns))
     }
 
     // MARK: Helpers

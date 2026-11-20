@@ -693,3 +693,76 @@ suite('languageUtils/bestMatch[format,EN]', 'languageUtils.test.js', { fallbackL
     [[['en']], [['EN']]], { kind: 'bestMatch' });
 suite('languageUtils/bestMatch[format,EN-US]', 'languageUtils.test.js', { fallbackLng: 'dev', supportedLngs: ['EN-US'] },
     [[['en']]], { kind: 'bestMatch' });
+
+// MARK: translator.translate.missing.test.js (saveMissing: what the missingKeyHandler receives)
+
+var __missingResources = {
+    en: { translation: { test: 'test_en', deep: { test: 'deep_en' } } },
+    de: { translation: { test: 'test_de' } }
+};
+
+suite('missing/saveMissing', 'translator.translate.missing.test.js', {
+    lng: 'en', fallbackLng: 'en', ns: 'translation', defaultNS: 'translation', saveMissing: true, resources: __missingResources
+}, [
+    ['translation:test.missing'],
+    ['translation:test'],
+    ['translation:missing', { defaultValue: 'dv' }],
+    ['translation:missing', { lng: 'de' }],
+    ['translation:missing', { defaultValue: 'dv', lng: 'de' }],
+    ['translation:missing', { defaultValue: '' }],
+    ['other:missing'],
+    ['translation:test', { defaultValue: 'different' }]
+], { kind: 'missing' });
+
+['current', 'all', 'fallback'].forEach(function (to) {
+    suite('missing/saveMissingTo[' + to + ']', 'translator.translate.missing.test.js', {
+        lng: 'de-CH', fallbackLng: ['fr', 'en'], saveMissing: true, saveMissingTo: to,
+        resources: { en: { translation: { test: 'test_en' } } }
+    }, [['missing'], ['missing', { defaultValue: 'dv' }], ['missing', { lng: 'en' }]], { kind: 'missing' });
+});
+
+suite('missing/updateMissing', 'translator.translate.updateMissing.test.js', {
+    lng: 'en', fallbackLng: 'en', saveMissing: true, updateMissing: true, resources: __missingResources
+}, [
+    ['test', { defaultValue: 'different' }],
+    ['test', { defaultValue: 'test_en' }],
+    ['test'],
+    ['missing', { defaultValue: 'dv' }]
+], { kind: 'missing' });
+
+suite('missing/plurals[ar]', 'translator.translate.missing.test.js', {
+    lng: 'ar', fallbackLng: 'ar', saveMissing: true, saveMissingPlurals: true, resources: __missingResources
+}, [
+    ['translation:test.missing', { count: 10 }],
+    ['translation:test.missing', { count: 0 }],
+    ['translation:test.missing', { count: 0, defaultValue_zero: 'default0', defaultValue_one: 'default1' }],
+    ['translation:test.missing', { count: 1, defaultValue: 'dv', defaultValue_one: 'default1' }]
+], { kind: 'missing' });
+
+suite('missing/plurals[en ordinal]', 'translator.translate.missing.test.js', {
+    lng: 'en', fallbackLng: 'en', saveMissing: true, saveMissingPlurals: true, resources: __missingResources
+}, [
+    ['translation:test.missing', { count: 3, ordinal: true }],
+    ['translation:test.missing', { count: 0, ordinal: true }],
+    ['translation:test.missing', { count: 1, ordinal: true, defaultValue_ordinal_one: 'first', defaultValue: 'dv' }],
+    ['translation:test.missing', { count: 2 }]
+], { kind: 'missing' });
+
+suite('missing/plurals[off]', 'translator.translate.missing.test.js', {
+    lng: 'ar', fallbackLng: 'ar', saveMissing: true, saveMissingPlurals: false, resources: __missingResources
+}, [['translation:test.missing', { count: 10 }]], { kind: 'missing' });
+
+suite('missing/off', 'translator.translate.missing.test.js', {
+    lng: 'en', fallbackLng: 'en', saveMissing: false, resources: __missingResources
+}, [['translation:test.missing']], { kind: 'missing' });
+
+suite('missing/appendNamespaceToMissingKey', 'translator.translate.missing.test.js', {
+    lng: 'en', fallbackLng: 'en', appendNamespaceToMissingKey: true, resources: __missingResources
+}, [['missing'], ['translation:missing'], ['other:missing'], ['test'], ['missing', { defaultValue: 'dv' }], ['missing', { nsSeparator: '|' }]]);
+
+// pluralResolver: languages without rules (Intl falls back to the default locale)
+suite('plural/suffix[unknown]', 'pluralResolver.test.js', { fallbackLng: 'en' },
+    [['xx', { count: 1 }], ['xx', { count: 2 }], ['dev', { count: 1 }], ['dev', { count: 2 }], ['zz-ZZ', { count: 1 }],
+        ['xx', { count: 1, ordinal: true }], ['xx', { count: 2, ordinal: true }], ['dev', { count: 3, ordinal: true }],
+        ['zz-ZZ', { count: 1, ordinal: true }], ['en-US', { count: 21, ordinal: true }], ['pt-BR', { count: 1 }]],
+    { kind: 'pluralSuffix' });
