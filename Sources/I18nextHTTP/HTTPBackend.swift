@@ -16,7 +16,7 @@ import Foundation
 /// // GET https://cdn.example.com/app/locales/pt/translation.json
 /// ```
 ///
-/// Status handling: 2xx is parsed as JSON; 404 and 410 are ``BackendError/notFound(language:namespace:)``;
+/// Status handling: 2xx is parsed as JSON; 404 and 410 are `BackendError.notFound(language:namespace:)`;
 /// 408, 425, 429 and 5xx, plus network failures, are ``HTTPTransientError`` (retried by the connector);
 /// anything else is final.
 public struct HTTPBackend: Backend {
