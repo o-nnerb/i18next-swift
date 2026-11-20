@@ -79,19 +79,3 @@ jobs:
       # Step 5 – Needs a Codecov token for this repository.
       enable-coverage-upload: false
     secrets: inherit
-
-  # Specific to this package: the `NIOTransport` trait is forwarded to RequestDL, and Apple apps are expected to
-  # turn it off (`traits: []`) to keep SwiftNIO out of the build. `.urlSession` must keep working without it.
-  no-nio-build:
-    name: "🌐 URLSession-only Build & Test"
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: xcode-27
-    timeout-minutes: 30
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_27.2.app
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Build with the NIOTransport trait disabled
-        run: swift build --disable-default-traits
-      - name: Test with the NIOTransport trait disabled
-        run: swift test --disable-default-traits

@@ -52,12 +52,6 @@ o.backend = try HTTPBackend(
 2xx is parsed as JSON; 404/410 are `notFound`; 408/425/429/5xx and network errors are `HTTPTransientError` (retried);
 anything else is final.
 
-The `NIOTransport` trait (on by default) is forwarded to RequestDL. Apple-only apps can drop SwiftNIO from the build:
-
-```swift
-.package(url: "https://github.com/o-nnerb/i18next-swift.git", from: "...", traits: [])
-```
-
 ## Plural rules
 
 `Sources/I18next/CLDRPluralData.swift` is generated from CLDR's `plurals.xml` and `ordinals.xml` (Unicode License v3):

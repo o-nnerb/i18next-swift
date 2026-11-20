@@ -14,23 +14,13 @@ let package = Package(
         .library(name: "I18next", targets: ["I18next"]),
         .library(name: "I18nextHTTP", targets: ["I18nextHTTP"]),
     ],
-    traits: [
-        // Forwarded to RequestDL. Linux/Windows/Android need it (`.nio` is their only executor); Apple apps
-        // that only use `.urlSession` can drop SwiftNIO from the build with `traits: []` on this package.
-        .trait(
-            name: "NIOTransport",
-            description: "Builds RequestDL with SwiftNIO. Required to run `I18nextHTTP` outside Apple platforms."
-        ),
-        .default(enabledTraits: ["NIOTransport"]),
-    ],
     dependencies: [
         // Provides `Lock` (os_unfair_lock / pthread / SRWLOCK) and `AsyncSemaphore`.
         // Temporary: `Lock` may later be inlined to drop the dependency.
         .package(url: "https://github.com/o-nnerb/swift-async-stream.git", from: "3.0.2"),
         .package(
             url: "https://github.com/request-dl/request-dl-nio.git",
-            from: "4.5.8",
-            traits: [.trait(name: "NIOTransport", condition: .when(traits: ["NIOTransport"]))]
+            from: "4.5.8"
         ),
     ],
     targets: [

@@ -47,15 +47,6 @@ await i18n.initialize()
 
 A 2xx body that isn't JSON is ``HTTPBackendError/invalidResponse(language:namespace:underlying:)``, also final.
 
-### Dropping SwiftNIO on Apple platforms
-
-The package forwards a `NIOTransport` trait to RequestDL, on by default. Linux and Windows need it, because `.nio` is
-their only executor. An Apple-only app can leave SwiftNIO out of its build:
-
-```swift
-.package(url: "https://github.com/o-nnerb/i18next-swift.git", from: "...", traits: [])
-```
-
 ## Topics
 
 ### Backend
