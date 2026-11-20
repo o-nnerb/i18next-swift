@@ -401,8 +401,23 @@ extension I18next {
         let escape = opt.escapeValue ?? options.interpolation.escapeValue
         let lng = opt.lng ?? language ?? usedLng
         let formats = state.withLock { $0.formats }
-        let format: Interpolator.Format = { name, value, arguments in
-            formats[name]?(value, lng, arguments)
+        let callData = Interpolator.data(for: opt)
+        let format: Interpolator.Format = { name, value, arguments, variable in
+            guard let handler = formats[name], value != .null else { return nil }
+
+            var merged = arguments
+            for (key, option) in callData { merged[key] = option }
+            if let call = opt.lng { merged["lng"] = .string(call) }
+            var parameters: [String: JSONValue] = [:]
+            if case .object(let all)? = callData["formatParams"], case .object(let own)? = all[variable] {
+                parameters = own
+                for (key, option) in own { merged[key] = option }
+            }
+
+            let language =
+                parameters["locale"]?.stringValue ?? parameters["lng"]?.stringValue ?? merged["locale"]?.stringValue
+                ?? merged["lng"]?.stringValue ?? lng
+            return try? handler(value, FormatContext(language: language, options: merged, variable: variable))
         }
 
         let nestedBefore = options.interpolation.skipOnVariables ? interpolator.nestingCount(in: text) : 0

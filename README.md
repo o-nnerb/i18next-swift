@@ -6,7 +6,7 @@ A from-scratch Swift port of [i18next](https://github.com/i18next/i18next). Swif
 |---|---|
 | Platforms | macOS 12, iOS 15, tvOS 15, watchOS 9, visionOS 1, Linux, Windows |
 | Foundation | `FoundationEssentials` where it exists; the system `Foundation` on Apple SDKs (only `JSONValue` and `FileSystemBackend` import it) |
-| Dependencies | [swift-async-stream](https://github.com/o-nnerb/swift-async-stream) for `Lock` and `AsyncSemaphore` (internal import); `I18nextHTTP` also pulls [request-dl-nio](https://github.com/request-dl/request-dl-nio) |
+| Dependencies | [swift-async-stream](https://github.com/o-nnerb/swift-async-stream) for `Lock` and `AsyncSemaphore` (internal import); `I18nextHTTP` also pulls [request-dl-nio](https://github.com/request-dl/request-dl-nio); `I18nextFormatters` uses Foundation (the full one on Linux) |
 
 Reads the i18next v4 JSON format (`key_one` / `key_other`, `key_ordinal_one`, `key_context`, `ns:key`, `{{var}}`, `$t(key)`).
 
@@ -52,6 +52,19 @@ o.backend = try HTTPBackend(
 2xx is parsed as JSON; 404/410 are `notFound`; 408/425/429/5xx and network errors are `HTTPTransientError` (retried);
 anything else is final.
 
+## Formatters
+
+`import I18nextFormatters` adds i18next's `number`, `currency`, `datetime`, `relativetime` and `list` formatters on top of
+Foundation (`Intl`'s options, mapped onto `FormatStyle`, `DateFormatter` and `RelativeDateTimeFormatter`):
+
+```swift
+options.formats = BuiltInFormats.all   // or: i18n.addBuiltInFormats()
+// "Total: {{amount, currency(EUR)}}"  →  "Total: €1,234.50"
+```
+
+They are checked against i18next on 1,814 values on Apple platforms; the documented gaps are quarters and fractional
+relative times, `unit` lists and number styles, and time zone display names.
+
 ## Conformance
 
 `Tests/I18nextTests/ConformanceFixtures.swift` holds 1,166 scenarios taken from the i18next test suite (lookup, plurals,
@@ -86,6 +99,7 @@ escaping, nesting, `returnObjects`, `joinArrays`, `returnDetails`, custom format
 language detection, events, `saveMissing` with `missingKeyHandler` / backend `create`, and conformance with
 i18next 27.2.2 (1,317 scenarios).
 
-Not yet: built-in `number`/`datetime`/`list` formatters (planned as `I18nextFormatters` on
-`FoundationInternationalization`), `postProcess`, `i18nFormat`, `overloadTranslationOptionHandler`, `hasLoadedNamespace`
+Also: the `I18nextFormatters` product (`number`, `currency`, `datetime`, `relativetime`, `list`).
+
+Not yet: `postProcess`, `i18nFormat`, `overloadTranslationOptionHandler`, `hasLoadedNamespace`
 checks, ICU-driven BCP 47 aliases beyond a small table (`sgn-BE-FR` → `sfb`).

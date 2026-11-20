@@ -2,8 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 public final class I18next: Sendable {
-    /// Custom `{{value, name(arg: x)}}` formatter. Receives the raw value, the active language and the parsed arguments.
-    public typealias Format = @Sendable (_ value: JSONValue, _ lng: String?, _ arguments: [String: String]) -> String
+    /// What a formatter is told: the language, and every option that applies to the value.
+    public struct FormatContext: Sendable {
+        /// The language to format for: the variable's `formatParams` locale, the call's `lng`, or the active language.
+        public let language: String?
+        /// The arguments written in the template (`number(minimumFractionDigits: 2)`), the call's options and
+        /// variables, and the `formatParams` entry for the variable, the last one winning.
+        public let options: [String: JSONValue]
+        /// The name of the variable being formatted.
+        public let variable: String
+    }
+
+    /// A `{{value, name(arg: x)}}` formatter. Throwing leaves the value as it was, as in i18next.
+    public typealias Format = @Sendable (_ value: JSONValue, _ context: FormatContext) throws -> JSONValue
 
     public struct Options: Sendable {
         public var lng: String?
@@ -17,6 +28,9 @@ public final class I18next: Sendable {
         public var supportedLngs: [String]?
         /// With `supportedLngs`, accept `de-AT` when `de` is supported.
         public var nonExplicitSupportedLngs = false
+        /// Formatters available from the start, by lower-cased name. See the `I18nextFormatters` product for the
+        /// ones i18next ships (`number`, `currency`, `datetime`, `relativetime`, `list`).
+        public var formats: [String: Format] = [:]
         /// Reports keys that `t` could not find, to `missingKeyHandler` or the backend.
         public var saveMissing = false
         public var saveMissingTo: SaveMissingTo = .fallback
@@ -114,7 +128,9 @@ public final class I18next: Sendable {
 
         var namespaces = options.ns ?? options.defaultNS
         for ns in options.defaultNS where !namespaces.contains(ns) { namespaces.append(ns) }
-        self.state = Protected(State(language: options.lng.map(languageUtils.format), namespaces: namespaces))
+        var state = State(language: options.lng.map(languageUtils.format), namespaces: namespaces)
+        for (name, format) in options.formats { state.formats[Self.formatName(name)] = format }
+        self.state = Protected(state)
 
         let usesBackend = options.resources.isEmpty || options.partialBundledLanguages
         self.connector =
@@ -167,7 +183,12 @@ public final class I18next: Sendable {
     // MARK: Formats
 
     public func addFormat(_ name: String, _ format: @escaping Format) {
-        state.withLock { $0.formats[name] = format }
+        state.withLock { $0.formats[Self.formatName(name)] = format }
+    }
+
+    /// Format names are case-insensitive and ignore surrounding whitespace.
+    static func formatName(_ name: String) -> String {
+        Interpolator.trimmed(name).lowercased()
     }
 
     // MARK: Translation

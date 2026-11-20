@@ -1,4 +1,4 @@
 version: 1
 builder:
   configs:
-    - documentation_targets: [I18next, I18nextHTTP]
+    - documentation_targets: [I18next, I18nextHTTP, I18nextFormatters]

@@ -71,11 +71,15 @@ Nest other translations with `$t(key)`, optionally with options:
 
 ### Custom formats
 
-`{{value, name(arg: x)}}` calls a formatter you register:
+`{{value, name(arg: x)}}` calls a formatter you register. It gets the value and a context with the language and every
+option that applies (the template's arguments, the call's variables, and `formatParams`):
 
 ```swift
-i18n.addFormat("uppercase") { value, _, _ in value.interpolationString.uppercased() }
+i18n.addFormat("uppercase") { value, _ in .string(value.interpolationString.uppercased()) }
 ```
+
+The `I18nextFormatters` product provides the ones i18next ships: `number`, `currency`, `datetime`, `relativetime` and
+`list`.
 
 ## Arrays and objects
 

@@ -13,6 +13,7 @@ let package = Package(
     products: [
         .library(name: "I18next", targets: ["I18next"]),
         .library(name: "I18nextHTTP", targets: ["I18nextHTTP"]),
+        .library(name: "I18nextFormatters", targets: ["I18nextFormatters"]),
     ],
     dependencies: [
         // Provides `Lock` (os_unfair_lock / pthread / SRWLOCK) and `AsyncSemaphore`.
@@ -43,9 +44,23 @@ let package = Package(
                 .defaultIsolation(nil)
             ]
         ),
+        .target(
+            name: "I18nextFormatters",
+            dependencies: ["I18next"],
+            swiftSettings: [
+                .defaultIsolation(nil)
+            ]
+        ),
         .testTarget(
             name: "I18nextTests",
             dependencies: ["I18next"],
+            swiftSettings: [
+                .defaultIsolation(nil)
+            ]
+        ),
+        .testTarget(
+            name: "I18nextFormattersTests",
+            dependencies: ["I18nextFormatters"],
             swiftSettings: [
                 .defaultIsolation(nil)
             ]

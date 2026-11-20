@@ -204,7 +204,7 @@ extension JSONValue {
 
     /// What JavaScript's `String(value)` gives, which is what i18next substitutes into a translation: `null` is empty,
     /// arrays are joined with commas, objects are `[object Object]`.
-    var interpolationString: String {
+    public var interpolationString: String {
         switch self {
         case .null: return ""
         case .bool(let value): return value ? "true" : "false"

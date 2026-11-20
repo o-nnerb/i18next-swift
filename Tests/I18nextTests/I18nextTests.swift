@@ -204,11 +204,60 @@ struct InterpolationTests {
 
     @Test func customFormat() {
         let i18n = makeI18n()
-        i18n.addFormat("double") { value, _, args in
+        i18n.addFormat("Double") { value, context in  // names are case-insensitive
             let n = Double(value.interpolationString) ?? 0
-            return "\(n * 2)\(args["suffix"] ?? "")"
+            return .string("\(n * 2)\(context.options["suffix"]?.interpolationString ?? "")")
         }
         #expect(i18n.t("price", .init(variables: ["value": 4])) == "Cost: 8.0")
+    }
+
+    @Test func formatReceivesTemplateArgumentsCallOptionsAndFormatParams() {
+        let i18n = I18next { options in
+            options.lng = "en"
+            options.resources = ["en": ["translation": ["k": "{{v, show(a: 1; b: true; c: 'text'), show(d: x)}}"]]]
+        }
+        let seen = Protected<[[String: JSONValue]]>([])
+        i18n.addFormat("show") { value, context in
+            seen.withLock { $0.append(context.options) }
+            return .string(value.interpolationString + "!")
+        }
+        let out = i18n.t(
+            "k",
+            .init(
+                variables: ["v": "x", "own": "kept", "formatParams": ["v": ["scale": 3, "locale": "fr"]]])
+        )
+
+        #expect(out == "x!!")
+        let first = seen.withLock { $0.first }
+        #expect(first?["a"] == 1 && first?["b"] == true && first?["c"] == "text")  // typed like i18next
+        #expect(first?["own"] == "kept")  // the call's variables
+        #expect(first?["scale"] == 3)  // formatParams for the variable
+    }
+
+    @Test func formatChainKeepsParenthesesTogetherAndSkipsUnknownAndNull() {
+        let i18n = I18next { options in
+            options.lng = "en"
+            options.resources = [
+                "en": ["translation": ["k": "{{v, two(a: 1, c: x, y; b: 2), upper, nosuch}}", "n": "{{v, upper}}"]]
+            ]
+        }
+        i18n.addFormat("two") { value, context in
+            .string("\(value.interpolationString)\(context.options["b"]?.interpolationString ?? "?")")
+        }
+        i18n.addFormat("upper") { value, _ in .string(value.interpolationString.uppercased()) }
+
+        #expect(i18n.t("k", .init(variables: ["v": "x"])) == "X2")
+        #expect(i18n.t("n", .init(variables: ["v": nil])) == "")  // null is not formatted
+    }
+
+    @Test func throwingFormatterLeavesTheValueAlone() {
+        struct Boom: Error {}
+        let i18n = I18next { options in
+            options.lng = "en"
+            options.resources = ["en": ["translation": ["k": "{{v, boom}}"]]]
+        }
+        i18n.addFormat("boom") { _, _ in throw Boom() }
+        #expect(i18n.t("k", .init(variables: ["v": "kept"])) == "kept")
     }
 
     @Test func nesting() {

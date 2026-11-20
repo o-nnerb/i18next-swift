@@ -53,7 +53,11 @@ struct Interpolator: Sendable {
         self.unescapeSuffix = prefix.isEmpty ? options.unescapeSuffix : ""
     }
 
-    typealias Format = (_ name: String, _ value: JSONValue, _ arguments: [String: String]) -> String?
+    /// Applies the formatter `name` to `value`. `arguments` are the ones written in the template
+    /// (`number(minimumFractionDigits: 2)`), `variable` is the name being formatted. nil leaves the value as it is.
+    typealias Format = (
+        _ name: String, _ value: JSONValue, _ arguments: [String: JSONValue], _ variable: String
+    ) -> JSONValue?
 
     // MARK: Variables
 
@@ -126,10 +130,12 @@ struct Interpolator: Sendable {
             let variable = Self.trimmed(segments.removeFirst())
             value = lookup(variable, in: data)
             if var current = value {
-                let specifications = segments.map(Self.trimmed).filter { !$0.isEmpty }
-                for specification in specifications {
+                for specification in Self.formatSpecifications(
+                    in: segments.joined(separator: options.formatSeparator),
+                    separator: options.formatSeparator
+                ) {
                     let (formatName, arguments) = Self.parseFormat(specification)
-                    if let formatted = format(formatName, current, arguments) { current = .string(formatted) }
+                    if let formatted = format(formatName, current, arguments, variable) { current = formatted }
                 }
                 value = current
             }
@@ -204,9 +210,10 @@ struct Interpolator: Sendable {
             let key = keyAndOptions(Self.trimmed(content), cloned: &cloned, escape: escape, format: format)
             var value = translate(key, cloned)
             if !formatters.isEmpty {
+                let variable = Self.trimmed(key)
                 value = formatters.reduce(Self.trimmed(value)) { current, specification in
                     let (formatName, arguments) = Self.parseFormat(specification)
-                    return format(formatName, .string(current), arguments) ?? current
+                    return format(formatName, .string(current), arguments, variable)?.interpolationString ?? current
                 }
             }
 
@@ -354,25 +361,72 @@ struct Interpolator: Sendable {
         return data
     }
 
+    /// Splits a chain of formats (`number, uppercase`), keeping a format whose parentheses contain the separator
+    /// (`number(a: 1, b: 2)`) in one piece.
+    static func formatSpecifications(in text: String, separator: String) -> [String] {
+        let raw = text.splitKeepingEmpty(on: separator)
+        var specifications: [String] = []
+        var index = 0
+        while index < raw.count {
+            var current = raw[index]
+            while current.contains("("), !current.contains(")"), index + 1 < raw.count {
+                index += 1
+                current += separator + raw[index]
+            }
+            let trimmedSpecification = trimmed(current)
+            if !trimmedSpecification.isEmpty { specifications.append(trimmedSpecification) }
+            index += 1
+        }
+        return specifications
+    }
+
     /// `number(minimumFractionDigits: 2; maximumFractionDigits: 3)` → ("number", [...]). Names are case-insensitive.
-    static func parseFormat(_ specification: String) -> (String, [String: String]) {
-        guard let open = specification.firstIndex(of: "("), specification.hasSuffix(")") else {
+    /// Values are typed like i18next does: `true`/`false` become booleans and numbers become numbers; `currency(EUR)`
+    /// and `relativetime(hour)` are shorthands for `currency: EUR` and `range: hour`.
+    static func parseFormat(_ specification: String) -> (String, [String: JSONValue]) {
+        guard let open = specification.firstIndex(of: "(") else {
             return (trimmed(specification).lowercased(), [:])
         }
         let name = trimmed(specification[..<open]).lowercased()
-        let inner = specification[
-            specification.index(after: open)..<specification.index(before: specification.endIndex)
-        ]
+        var inner = specification[specification.index(after: open)...]
+        if inner.last != nil { inner = inner.dropLast() }  // the closing parenthesis
 
-        var arguments: [String: String] = [:]
-        for pair in inner.split(separator: ";") {
+        let text = String(inner)
+        if name == "currency", !text.contains(":") { return (name, ["currency": .string(trimmed(text))]) }
+        if name == "relativetime", !text.contains(":") { return (name, ["range": .string(trimmed(text))]) }
+
+        var arguments: [String: JSONValue] = [:]
+        for pair in text.split(separator: ";") {
             guard let colon = pair.firstIndex(of: ":") else { continue }
-            var value = trimmed(pair[pair.index(after: colon)...])
-            while value.hasPrefix("'") { value.removeFirst() }
-            while value.hasSuffix("'") { value.removeLast() }
-            arguments[trimmed(pair[..<colon])] = value
+            let key = trimmed(pair[..<colon])
+            var raw = trimmed(pair[pair.index(after: colon)...])
+            while raw.hasPrefix("'") { raw.removeFirst() }
+            while raw.hasSuffix("'") { raw.removeLast() }
+
+            if raw == "true" {
+                arguments[key] = .bool(true)
+            } else if raw == "false" {
+                arguments[key] = .bool(false)
+            } else if !raw.isEmpty, Double(raw) != nil {
+                arguments[key] = .number(Double(leadingInteger(raw)))  // `parseInt`: "1.5" is 1
+            } else if arguments[key] == nil {
+                arguments[key] = .string(raw)
+            }
         }
         return (name, arguments)
+    }
+
+    /// JavaScript's `parseInt(text, 10)` for text that is a number: the integer digits it starts with.
+    private static func leadingInteger(_ text: String) -> Int {
+        var digits = ""
+        for (offset, character) in text.enumerated() {
+            if character.isASCII, character.isNumber || (offset == 0 && (character == "-" || character == "+")) {
+                digits.append(character)
+            } else {
+                break
+            }
+        }
+        return Int(digits) ?? 0
     }
 
     static func trimmed(_ text: some StringProtocol) -> String {

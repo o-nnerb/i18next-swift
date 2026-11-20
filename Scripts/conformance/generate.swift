@@ -8,7 +8,10 @@
 // Runs Scripts/conformance/cases.js against a real i18next, inside JavaScriptCore (no Node needed), and writes
 // the answers as a Swift file for the conformance tests.
 //
-//   swift Scripts/conformance/generate.swift <i18next.js (UMD bundle)> <i18next version> <output.swift>
+//   swift Scripts/conformance/generate.swift <i18next.js (UMD bundle)> <i18next version> <output.swift> [cases file] [enum]
+//
+// `cases file` defaults to `cases.js` and `enum` to `ConformanceFixtures`; the formatters use
+// `cases-formatters.js` and `FormatterFixtures`.
 //
 // macOS only (JavaScriptCore). Get the bundle from https://cdn.jsdelivr.net/npm/i18next@<version>/dist/umd/i18next.js
 
@@ -17,11 +20,14 @@ import Foundation
 import JavaScriptCore
 
 let arguments = CommandLine.arguments
-guard arguments.count == 4 else {
-    FileHandle.standardError.write(Data("usage: generate.swift <i18next.js> <version> <output.swift>\n".utf8))
+guard (4...6).contains(arguments.count) else {
+    FileHandle.standardError.write(
+        Data("usage: generate.swift <i18next.js> <version> <output.swift> [cases file] [enum]\n".utf8))
     exit(2)
 }
 let (bundlePath, version, outputPath) = (arguments[1], arguments[2], arguments[3])
+let casesName = arguments.count > 4 ? arguments[4] : "cases.js"
+let enumName = arguments.count > 5 ? arguments[5] : "ConformanceFixtures"
 
 let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 func read(_ path: String) -> String {
@@ -40,7 +46,7 @@ context.exceptionHandler = { _, exception in
 context.evaluateScript("var console = { log() {}, warn() {}, error() {}, info() {}, debug() {} };")
 context.evaluateScript(read(bundlePath))  // the bundle sets `globalThis.i18next`
 context.evaluateScript(read(directory.appendingPathComponent("harness.js").path))
-context.evaluateScript(read(directory.appendingPathComponent("cases.js").path))
+context.evaluateScript(read(directory.appendingPathComponent(casesName).path))
 
 let bundleSource = read(bundlePath)
 let digest = SHA256.hash(data: Data(bundleSource.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -59,7 +65,7 @@ let source = """
 // what i18next \(version) itself answers for them.
 // Bundle: dist/umd/i18next.js, sha256 \(digest)
 
-enum ConformanceFixtures {
+enum \(enumName) {
     static let i18nextVersion = "\(version)"
 
     static let json = #\"\"\"
