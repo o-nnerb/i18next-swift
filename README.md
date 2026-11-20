@@ -78,3 +78,8 @@ async backends.
 
 Not yet: language detectors, events, `returnObjects`, `saveMissing`, built-in
 `number`/`datetime`/`list` formatters (planned as `I18nextFormatters` on `FoundationInternationalization`).
+
+## License
+
+MIT, like [i18next](https://github.com/i18next/i18next), whose copyright notice it keeps: see `LICENSE`.
+The CLDR plural data is under the Unicode License v3: see `THIRD_PARTY_NOTICES.md`.
