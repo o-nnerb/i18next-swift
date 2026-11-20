@@ -8,12 +8,25 @@
 //     tests    [[key, options?], ...]
 //     options  { kind }, one of: t (default), exists, getResource, resolveHierarchy, formatCode, languagePart, pluralSuffix,
 //              bestMatch, missing (runs `t` and also records every call the `missingKeyHandler` receives)
+//
+// Post-processors `uppercase`, `wrap`, `bang`, `keyed`, `noop` and `times` are registered on every instance.
 
 var __suites = [];
 
 function suite(name, source, init, tests, options) {
     __suites.push({ name: name, source: source, init: init, tests: tests, options: options || {} });
 }
+
+// Post-processors registered on every instance (they only run when a case names them in `postProcess`).
+// ConformanceTests.swift registers the same ones.
+var __processors = {
+    uppercase: function (value) { return value.toUpperCase(); },
+    wrap: function (value) { return '[' + value + ']'; },
+    bang: function (value) { return value + '!'; },
+    keyed: function (value, key) { return value + '@' + (Array.isArray(key) ? key.join('|') : key); },
+    noop: function () { return undefined; },
+    times: function (value, key, options) { return new Array(options.times || 1).fill(value).join('-'); }
+};
 
 function __clone(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -75,6 +88,9 @@ function __run() {
                     };
                 }
                 instance.init(init);
+                Object.keys(__processors).forEach(function (name) {
+                    instance.use({ type: 'postProcessor', name: name, process: __processors[name] });
+                });
                 var result = kind === 'missing' ? { result: instance.t(key, __clone(options) || {}), calls: calls } : __call(instance, kind, key, options);
                 record.expected = result === undefined ? null : result;
             } catch (error) {

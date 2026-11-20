@@ -16,6 +16,25 @@ public final class I18next: Sendable {
     /// A `{{value, name(arg: x)}}` formatter. Throwing leaves the value as it was, as in i18next.
     public typealias Format = @Sendable (_ value: JSONValue, _ context: FormatContext) throws -> JSONValue
 
+    /// What a post-processor is told about the translation it is handed.
+    public struct PostProcessContext: Sendable {
+        /// The keys `t` was called with (i18next passes the same array).
+        public let keys: [String]
+        /// The language the text is for: the call's `lng`, the active language, or the one the key was found in.
+        public let language: String?
+        /// The call's options. Variables passed to `t` are in ``TranslationOptions/variables``.
+        public let options: TranslationOptions
+        /// Where the text came from, as `details(_:_:)` reports it (i18next's `postProcessPassResolved`).
+        public let usedKey: String
+        public let usedLng: String?
+        public let usedNS: String?
+        /// The instance doing the translating.
+        public let translator: I18next
+    }
+
+    /// Transforms a finished translation. Returning `nil` keeps the text as it was, as in i18next.
+    public typealias PostProcessor = @Sendable (_ value: String, _ context: PostProcessContext) -> String?
+
     public struct Options: Sendable {
         public var lng: String?
         public var fallbackLng: FallbackLanguages = .none
@@ -31,6 +50,11 @@ public final class I18next: Sendable {
         /// Formatters available from the start, by lower-cased name. See the `I18nextFormatters` product for the
         /// ones i18next ships (`number`, `currency`, `datetime`, `relativetime`, `list`).
         public var formats: [String: Format] = [:]
+        /// Post-processors available from the start, by name (case-sensitive).
+        public var postProcessors: [String: PostProcessor] = [:]
+        /// Post-processors applied, in order, to every translation. A call's ``TranslationOptions/postProcess``
+        /// replaces them (an empty list switches them off for that call). Names that aren't registered are skipped.
+        public var postProcess: [String] = []
         /// Reports keys that `t` could not find, to `missingKeyHandler` or the backend.
         public var saveMissing = false
         public var saveMissingTo: SaveMissingTo = .fallback
@@ -92,6 +116,7 @@ public final class I18next: Sendable {
         var language: String?
         var namespaces: [String]
         var formats: [String: Format] = [:]
+        var postProcessors: [String: PostProcessor] = [:]
         /// Bumped by every language change so an older, slower change can't override a newer one.
         var languageChangeToken = 0
     }
@@ -130,6 +155,7 @@ public final class I18next: Sendable {
         for ns in options.defaultNS where !namespaces.contains(ns) { namespaces.append(ns) }
         var state = State(language: options.lng.map(languageUtils.format), namespaces: namespaces)
         for (name, format) in options.formats { state.formats[Self.formatName(name)] = format }
+        state.postProcessors = options.postProcessors
         self.state = Protected(state)
 
         let usesBackend = options.resources.isEmpty || options.partialBundledLanguages
@@ -189,6 +215,14 @@ public final class I18next: Sendable {
     /// Format names are case-insensitive and ignore surrounding whitespace.
     static func formatName(_ name: String) -> String {
         Interpolator.trimmed(name).lowercased()
+    }
+
+    // MARK: Post-processors
+
+    /// Registers (or replaces) a post-processor. Use it through ``Options/postProcess`` or
+    /// ``TranslationOptions/postProcess``.
+    public func addPostProcessor(_ name: String, _ processor: @escaping PostProcessor) {
+        state.withLock { $0.postProcessors[name] = processor }
     }
 
     // MARK: Translation

@@ -86,7 +86,7 @@ extension I18next {
         if let joinArrays, case .array(let items)? = found {
             var joined = items.map(\.interpolationString).joined(separator: joinArrays)
             if !joined.isEmpty {
-                joined = extendTranslation(joined, keys: keys, opt: opt, usedLng: resolved.usedLng)
+                joined = extendTranslation(joined, keys: keys, opt: opt, resolved: resolved)
             }
             return (.string(joined), resolved)
         }
@@ -124,7 +124,7 @@ extension I18next {
             )
         }
 
-        var output = extendTranslation(text, keys: keys, opt: opt, usedLng: resolved.usedLng)
+        var output = extendTranslation(text, keys: keys, opt: opt, resolved: resolved)
         let namespaceSeparator = nsSeparator(for: opt) ?? ":"
         if usedKey, output == key, options.appendNamespaceToMissingKey {
             output = "\(namespace)\(namespaceSeparator)\(key)"
@@ -394,9 +394,36 @@ extension I18next {
         )
     }
 
-    func extendTranslation(_ text: String, keys: [String], opt: TranslationOptions, usedLng: String?) -> String {
-        if opt.skipInterpolation { return text }
+    /// Interpolates and nests the text, then runs the post-processors (which also see texts that skip interpolation).
+    func extendTranslation(_ text: String, keys: [String], opt: TranslationOptions, resolved: Resolved) -> String {
+        let output = opt.skipInterpolation ? text : interpolate(text, keys: keys, opt: opt, usedLng: resolved.usedLng)
+        return postProcess(output, keys: keys, opt: opt, resolved: resolved)
+    }
 
+    private func postProcess(_ text: String, keys: [String], opt: TranslationOptions, resolved: Resolved) -> String {
+        guard opt.applyPostProcessor else { return text }
+        let names = opt.postProcess ?? options.postProcess
+        guard !names.isEmpty else { return text }
+
+        let processors = state.withLock { $0.postProcessors }
+        let context = PostProcessContext(
+            keys: keys,
+            language: opt.lng ?? language ?? resolved.usedLng,
+            options: opt,
+            usedKey: resolved.usedKey,
+            usedLng: resolved.usedLng,
+            usedNS: resolved.usedNS,
+            translator: self
+        )
+        var result = text
+        for name in names {
+            guard let processor = processors[name] else { continue }
+            result = processor(result, context) ?? result
+        }
+        return result
+    }
+
+    private func interpolate(_ text: String, keys: [String], opt: TranslationOptions, usedLng: String?) -> String {
         let interpolator = makeInterpolator(for: opt)
         let escape = opt.escapeValue ?? options.interpolation.escapeValue
         let lng = opt.lng ?? language ?? usedLng
@@ -434,6 +461,7 @@ extension I18next {
         }
 
         var inherited = opt
+        inherited.applyPostProcessor = false
         if inherited.lng == nil { inherited.lng = language ?? usedLng }
         let currentKey = keys.last
 

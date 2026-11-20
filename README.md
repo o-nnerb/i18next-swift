@@ -67,8 +67,8 @@ relative times, `unit` lists and number styles, and time zone display names.
 
 ## Conformance
 
-`Tests/I18nextTests/ConformanceFixtures.swift` holds 1,166 scenarios taken from the i18next test suite (lookup, plurals,
-context, namespaces, separators, interpolation, nesting, language hierarchy, store lookup), each with the answer
+`Tests/I18nextTests/ConformanceFixtures.swift` holds 1,376 scenarios, most taken from the i18next test suite (lookup, plurals,
+context, namespaces, separators, interpolation, nesting, language hierarchy, store lookup, post-processors), each with the answer
 **i18next 27.2.2 itself gives**. `Scripts/conformance/generate.swift` computes them by running the real i18next inside
 JavaScriptCore, so no Node is needed (macOS only):
 
@@ -95,11 +95,11 @@ Compact-notation operands (`c`, `e`) are always 0, as for any plain number.
 
 Implemented: resource store, language hierarchy (`load`, `supportedLngs`, script parts, per-language fallbacks),
 CLDR 49 plurals (cardinal for 227 locales, ordinal for 110, generated), context, namespaces, interpolation with
-escaping, nesting, `returnObjects`, `joinArrays`, `returnDetails`, custom formats, `getFixedT`, async backends,
+escaping, nesting, `returnObjects`, `joinArrays`, `returnDetails`, custom formats, `postProcess`, `getFixedT`, async backends,
 language detection, events, `saveMissing` with `missingKeyHandler` / backend `create`, and conformance with
-i18next 27.2.2 (1,317 scenarios).
+i18next 27.2.2 (1,376 scenarios).
 
 Also: the `I18nextFormatters` product (`number`, `currency`, `datetime`, `relativetime`, `list`).
 
-Not yet: `postProcess`, `i18nFormat`, `overloadTranslationOptionHandler`, `hasLoadedNamespace`
+Not yet: `i18nFormat`, `overloadTranslationOptionHandler`, `hasLoadedNamespace`
 checks, ICU-driven BCP 47 aliases beyond a small table (`sgn-BE-FR` → `sfb`).

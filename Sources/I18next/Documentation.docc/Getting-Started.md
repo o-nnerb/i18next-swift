@@ -93,6 +93,28 @@ i18n.object("steps", .init(variables: ["app": "Mail"]))   // ["Open Mail", "Sign
 i18n.t("steps", .init(variables: ["app": "Mail"], joinArrays: " → "))
 ```
 
+## Post-processing
+
+A post-processor transforms a finished translation: after interpolation and nesting, once per `t` call. Register it by
+name and list the names to apply, on the instance or per call (a call's list replaces the instance's; `[]` applies
+none). Returning `nil` keeps the text, and a name that isn't registered is skipped.
+
+```swift
+let i18n = I18next { options in
+    options.lng = "en"
+    options.resources = ["en": ["translation": ["hello": "Hello"]]]
+    options.postProcessors["uppercase"] = { value, _ in value.uppercased() }
+    options.postProcessors["tag"] = { value, context in "\(value) (\(context.language ?? "?"))" }
+}
+i18n.t("hello", .init(postProcess: ["uppercase", "tag"]))   // "HELLO (en)"
+i18n.addPostProcessor("bang") { value, _ in value + "!" }   // also possible after creation
+```
+
+The processor receives an ``I18next/PostProcessContext``: the keys, the language, the call's options (your variables
+are in ``TranslationOptions/variables``) and where the text was found. A text with nested `$t(...)` is processed as a
+whole, and an object returned by ``I18next/object(_:_:)`` is processed leaf by leaf. Unlike i18next, `usedKey`, `usedLng`
+and `usedNS` are always provided, so there is no `postProcessPassResolved` switch.
+
 ## Changing the language
 
 ``I18next/setLanguage(_:)`` switches immediately. When resources come from a backend, use

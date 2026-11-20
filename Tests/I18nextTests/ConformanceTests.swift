@@ -262,6 +262,8 @@ enum ConformanceRunner {
                 if case .bool(let flag) = value { options.returnObjects = flag }
             case "joinArrays":
                 options.joinArrays = value.stringValue
+            case "postProcess":
+                options.postProcess = value.stringValue == "" ? [] : try strings(value)
             case "saveMissing":
                 if case .bool(let flag) = value { options.saveMissing = flag }
             case "saveMissingPlurals":
@@ -299,8 +301,24 @@ enum ConformanceRunner {
             }
         }
         configure(&options)
-        return I18next(options)
+        let i18n = I18next(options)
+        for (name, processor) in postProcessors { i18n.addPostProcessor(name, processor) }
+        return i18n
     }
+
+    /// The post-processors `harness.js` registers on every instance.
+    static let postProcessors: [String: I18next.PostProcessor] = [
+        "uppercase": { value, _ in value.uppercased() },
+        "wrap": { value, _ in "[\(value)]" },
+        "bang": { value, _ in value + "!" },
+        "keyed": { value, context in value + "@" + context.keys.joined(separator: "|") },
+        "noop": { _, _ in nil },
+        "times": { value, context in
+            let count: Int
+            if case .number(let number)? = context.options.variables["times"] { count = Int(number) } else { count = 1 }
+            return Array(repeating: value, count: max(count, 1)).joined(separator: "-")
+        },
+    ]
 
     private static func apply(interpolation value: JSONValue, to options: inout InterpolationOptions) throws {
         guard case .object(let fields) = value else { return }
@@ -382,6 +400,11 @@ enum ConformanceRunner {
                 if case .bool(false) = setting { options.joinArraysDisabled = true }
             case "returnDetails":
                 continue
+            case "skipInterpolation":
+                if case .bool(let flag) = setting { options.skipInterpolation = flag }
+            case "postProcess":
+                // `''` is falsy in i18next, so it falls back to the instance's list; `[]` (truthy) switches them off.
+                if setting.stringValue != "" { options.postProcess = try strings(setting) }
             case "ns":
                 options.ns = try strings(setting)
             case "count":

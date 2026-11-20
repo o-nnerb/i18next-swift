@@ -32,8 +32,12 @@ public struct TranslationOptions: Sendable {
     public var returnObjects: Bool?
     /// Joins an array resource into one string with this separator (`""` joins with nothing).
     public var joinArrays: String?
+    /// Post-processors for this call, replacing ``I18next/Options/postProcess``. `[]` applies none.
+    public var postProcess: [String]?
 
     var nestingDepth = 0
+    /// Cleared for nested `$t(...)` translations: the text they are part of is post-processed once, as a whole.
+    var applyPostProcessor = true
     /// Set while translating the entries of an array, which must not be joined again.
     var joinArraysDisabled = false
     /// Set on the options of a nested `$t(...)` call: the key whose template contained it.
@@ -57,7 +61,8 @@ public struct TranslationOptions: Sendable {
         nsSeparator: SeparatorSetting? = nil,
         ignoreJSONStructure: Bool? = nil,
         returnObjects: Bool? = nil,
-        joinArrays: String? = nil
+        joinArrays: String? = nil,
+        postProcess: [String]? = nil
     ) {
         self.lng = lng
         self.lngs = lngs
@@ -77,6 +82,7 @@ public struct TranslationOptions: Sendable {
         self.ignoreJSONStructure = ignoreJSONStructure
         self.returnObjects = returnObjects
         self.joinArrays = joinArrays
+        self.postProcess = postProcess
     }
 
     var hasDefaultValue: Bool {

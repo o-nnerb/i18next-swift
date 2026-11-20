@@ -87,6 +87,10 @@ Translating is synchronous; only loading resources from a ``Backend`` is asynchr
 - ``PluralResolver``
 - ``PluralCategory``
 
-### Interpolation
+### Interpolation and post-processing
 
 - ``InterpolationOptions``
+- ``I18next/Format``
+- ``I18next/FormatContext``
+- ``I18next/PostProcessor``
+- ``I18next/PostProcessContext``

@@ -766,3 +766,102 @@ suite('plural/suffix[unknown]', 'pluralResolver.test.js', { fallbackLng: 'en' },
         ['xx', { count: 1, ordinal: true }], ['xx', { count: 2, ordinal: true }], ['dev', { count: 3, ordinal: true }],
         ['zz-ZZ', { count: 1, ordinal: true }], ['en-US', { count: 21, ordinal: true }], ['pt-BR', { count: 1 }]],
     { kind: 'pluralSuffix' });
+
+// MARK: postProcess (the post-processors are defined in harness.js)
+
+var __postProcessResources = {
+    en: {
+        translation: {
+            a: 'hello',
+            b: 'Hi {{name}}',
+            c: 'see $t(a)',
+            d: 'see $t(a, {"postProcess": "bang"})',
+            item_one: '{{count}} item',
+            item_other: '{{count}} items',
+            friend: 'friend',
+            friend_male: 'boyfriend',
+            steps: ['open {{app}}', 'sign in'],
+            group: { title: 'Title', inner: { deep: 'deep' } },
+            empty: ''
+        }
+    }
+};
+
+suite('postProcess/call', 'postProcessor.test.js (cases written for this port)', { lng: 'en', resources: __postProcessResources }, [
+    ['a', { postProcess: 'uppercase' }],
+    ['a', { postProcess: ['uppercase', 'bang'] }],
+    ['a', { postProcess: ['wrap', 'times'], times: 2 }],
+    ['a', { postProcess: ['times', 'wrap'], times: 2 }],
+    ['a', { postProcess: 'times', times: 3 }],
+    ['a', { postProcess: 'times' }],
+    ['a', { postProcess: 'unknown' }],
+    ['a', { postProcess: ['unknown', 'bang'] }],
+    ['a', { postProcess: 'noop' }],
+    ['a', { postProcess: ['bang', 'noop', 'wrap'] }],
+    ['a', { postProcess: [] }],
+    ['a', { postProcess: '' }],
+    ['b', { name: 'x<y', postProcess: 'uppercase' }],
+    ['b', { name: 'x<y', postProcess: 'uppercase', interpolation: { escapeValue: false } }],
+    ['b', { postProcess: 'bang' }],
+    ['zzz', { postProcess: 'uppercase' }],
+    ['ns:zzz', { postProcess: 'uppercase' }],
+    ['zzz', { defaultValue: 'fallback {{x}}', x: 'v', postProcess: 'uppercase' }],
+    [['nope', 'a'], { postProcess: 'keyed' }],
+    ['a', { postProcess: 'keyed' }],
+    ['translation:a', { postProcess: 'keyed' }],
+    ['a', { postProcess: 'uppercase', skipInterpolation: true }],
+    ['b', { postProcess: 'uppercase', skipInterpolation: true }],
+    ['item', { count: 1, postProcess: 'uppercase' }],
+    ['item', { count: 5, postProcess: 'wrap' }],
+    ['friend', { context: 'male', postProcess: 'uppercase' }],
+    ['empty', { postProcess: 'bang' }],
+    ['empty', { defaultValue: '', postProcess: 'bang' }],
+    ['c', { postProcess: 'uppercase' }],
+    ['c', { postProcess: 'wrap' }],
+    ['c', { postProcess: ['wrap', 'bang'] }],
+    ['d', { postProcess: 'wrap' }],
+    ['d']
+]);
+
+suite('postProcess/init', 'postProcessor.test.js (cases written for this port)', {
+    lng: 'en', resources: __postProcessResources, postProcess: ['wrap']
+}, [
+    ['a'],
+    ['b', { name: 'Ann' }],
+    ['zzz'],
+    ['c'],
+    ['a', { postProcess: [] }],
+    ['a', { postProcess: ['bang'] }],
+    ['a', { postProcess: 'uppercase' }],
+    ['a', { postProcess: ['bang', 'unknown'] }],
+    ['a', { skipInterpolation: true }]
+]);
+
+suite('postProcess/init-string', 'postProcessor.test.js (cases written for this port)', {
+    lng: 'en', resources: __postProcessResources, postProcess: 'uppercase'
+}, [['a'], ['b', { name: 'Ann' }], ['a', { postProcess: 'bang' }]]);
+
+suite('postProcess/structures', 'postProcessor.test.js (cases written for this port)', { lng: 'en', resources: __postProcessResources }, [
+    ['group', { returnObjects: true, postProcess: 'wrap' }],
+    ['group', { returnObjects: true, postProcess: ['uppercase', 'bang'] }],
+    ['steps', { returnObjects: true, app: 'Mail', postProcess: 'wrap' }],
+    ['steps', { joinArrays: '+', app: 'Mail', postProcess: 'wrap' }],
+    ['steps', { joinArrays: '+', app: 'Mail', postProcess: ['uppercase', 'bang'] }],
+    ['group.title', { postProcess: 'keyed' }],
+    ['group', { postProcess: 'wrap' }],
+    ['a', { returnDetails: true, postProcess: 'uppercase' }],
+    ['zzz', { returnDetails: true, postProcess: 'uppercase' }]
+]);
+
+suite('postProcess/cimode', 'postProcessor.test.js (cases written for this port)', { lng: 'cimode', resources: __postProcessResources }, [
+    ['a', { postProcess: 'uppercase' }],
+    ['ns:a', { postProcess: 'uppercase' }]
+]);
+
+suite('postProcess/fallback', 'postProcessor.test.js (cases written for this port)', {
+    lng: 'de', fallbackLng: 'en', resources: __postProcessResources
+}, [
+    ['a', { postProcess: 'uppercase' }],
+    ['a', { postProcess: 'keyed', lng: 'en' }],
+    ['b', { name: 'Ann', postProcess: ['wrap', 'bang'] }]
+]);
