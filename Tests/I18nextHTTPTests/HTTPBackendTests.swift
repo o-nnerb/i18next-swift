@@ -13,8 +13,10 @@ import Darwin
 /// Minimal HTTP/1.1 server on a loopback socket: one request per connection, scripted responses.
 final class TestServer: @unchecked Sendable {
     struct Request: Sendable {
+        let method: String
         let target: String  // path and query as sent
         let headers: [String: String]  // lower-cased names
+        let body: String
         var path: String { String(target.prefix { $0 != "?" }) }
     }
     struct Response: Sendable {
@@ -84,7 +86,9 @@ final class TestServer: @unchecked Sendable {
             raw.append(contentsOf: buffer[0..<n])
         }
 
-        let lines = String(decoding: raw, as: UTF8.self).components(separatedBy: "\r\n")
+        let separator = raw.range(of: Data("\r\n\r\n".utf8))!
+        var bodyBytes = Data(raw[separator.upperBound...])
+        let lines = String(decoding: raw[..<separator.lowerBound], as: UTF8.self).components(separatedBy: "\r\n")
         let startLine = lines[0].split(separator: " ")
         guard startLine.count >= 2 else { return }
         var headers: [String: String] = [:]
@@ -95,7 +99,19 @@ final class TestServer: @unchecked Sendable {
             )
         }
 
-        let request = Request(target: String(startLine[1]), headers: headers)
+        let expected = headers["content-length"].flatMap { Int($0) } ?? 0
+        while bodyBytes.count < expected {
+            let n = read(client, &buffer, buffer.count)
+            if n <= 0 { break }
+            bodyBytes.append(contentsOf: buffer[0..<n])
+        }
+
+        let request = Request(
+            method: String(startLine[0]),
+            target: String(startLine[1]),
+            headers: headers,
+            body: String(decoding: bodyBytes, as: UTF8.self)
+        )
         let seen = lock.withLock { () -> Int in
             recorded.append(request)
             return recorded.filter { $0.path == request.path }.count
@@ -273,6 +289,139 @@ struct HTTPBackendTests {
         #expect(server.requests.isEmpty)
     }
 }
+
+@Suite("HTTPBackend create", .serialized)
+struct HTTPBackendCreateTests {
+    private func waitForPost(_ server: TestServer) async {
+        for _ in 0..<500 where !server.requests.contains(where: { $0.method == "POST" }) {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    @Test func saveMissingPostsTheKeyToAddPath() async throws {
+        let server = try TestServer { request, _ in
+            request.method == "GET" ? ok(#"{"hello":"Olá"}"#) : ok("{}")
+        }
+        defer { server.stop() }
+
+        let i18n = try makeI18n(server: server, headers: ["X-Api-Key": "secret"]) { $0.saveMissing = true }
+        await i18n.initialize()
+        #expect(i18n.t("novo", .init(defaultValue: "Novo")) == "Novo")
+        await waitForPost(server)
+
+        let post = try #require(server.requests.first { $0.method == "POST" })
+        #expect(post.path == "/locales/add/pt/translation")
+        #expect(post.headers["content-type"]?.hasPrefix("application/json") == true)
+        #expect(post.headers["x-api-key"] == "secret")
+        #expect(try JSONValue(json: post.body) == ["novo": "Novo"])
+    }
+
+    @Test func sendsAnEmptyStringWithoutAFallbackAndKeepsTheKeyAsIs() async throws {
+        let server = try TestServer { _, _ in ok("{}") }
+        defer { server.stop() }
+        let backend = try HTTPBackend(baseURL: server.baseURL)
+
+        try await backend.create(
+            languages: ["pt"],
+            namespace: "common",
+            key: "a.b c",
+            fallbackValue: nil,
+            isUpdate: false
+        )
+
+        let post = try #require(server.requests.first)
+        #expect(post.method == "POST")
+        #expect(post.path == "/locales/add/pt/common")
+        #expect(try JSONValue(json: post.body) == ["a.b c": ""])
+    }
+
+    @Test func postsOncePerLanguageAndAttemptsAllBeforeFailing() async throws {
+        let server = try TestServer { request, _ in
+            request.path.contains("/pt/") ? .init(status: 503, body: "") : ok("{}")
+        }
+        defer { server.stop() }
+        let backend = try HTTPBackend(baseURL: server.baseURL)
+
+        await #expect(throws: HTTPTransientError.self) {
+            try await backend.create(
+                languages: ["pt", "en", "de"],
+                namespace: "t",
+                key: "k",
+                fallbackValue: "v",
+                isUpdate: false
+            )
+        }
+        #expect(Set(server.requests.map(\.path)) == ["/locales/add/pt/t", "/locales/add/en/t", "/locales/add/de/t"])
+    }
+
+    @Test func customAddPathSupportsPrefixAndQuery() async throws {
+        let server = try TestServer { _, _ in ok("{}") }
+        defer { server.stop() }
+        let backend = try HTTPBackend(
+            baseURL: server.baseURL + "/app",
+            addPath: "/save/{{ns}}?lng={{lng}}&v=1"
+        )
+
+        try await backend.create(languages: ["pt"], namespace: "common", key: "k", fallbackValue: "v", isUpdate: true)
+
+        let post = try #require(server.requests.first)
+        #expect(post.path == "/app/save/common")
+        #expect(post.target.contains("lng=pt") && post.target.contains("v=1"))
+    }
+
+    @Test func aNilAddPathSendsNothing() async throws {
+        let server = try TestServer { _, _ in ok("{}") }
+        defer { server.stop() }
+        let backend = try HTTPBackend(baseURL: server.baseURL, addPath: nil)
+
+        try await backend.create(languages: ["pt"], namespace: "t", key: "k", fallbackValue: "v", isUpdate: false)
+
+        #expect(server.requests.isEmpty)
+    }
+
+    @Test func statusesAreMapped() async throws {
+        let server = try TestServer { request, _ in
+            request.path.hasSuffix("/forbidden") ? .init(status: 403, body: "") : .init(status: 429, body: "")
+        }
+        defer { server.stop() }
+        let backend = try HTTPBackend(baseURL: server.baseURL)
+
+        await #expect(throws: HTTPTransientError.self) {
+            try await backend.create(languages: ["pt"], namespace: "t", key: "k", fallbackValue: nil, isUpdate: false)
+        }
+        do {
+            try await backend.create(
+                languages: ["pt"],
+                namespace: "forbidden",
+                key: "k",
+                fallbackValue: nil,
+                isUpdate: false
+            )
+            Issue.record("expected unexpectedStatus")
+        } catch HTTPBackendError.unexpectedStatus(let status) {
+            #expect(status == 403)
+        }
+    }
+
+    @Test func rejectsUnsafeLanguageAndNamespace() async throws {
+        let server = try TestServer { _, _ in ok("{}") }
+        defer { server.stop() }
+        let backend = try HTTPBackend(baseURL: server.baseURL)
+
+        for (languages, namespace) in [(["../x"], "t"), (["pt", "a/b"], "t"), (["pt"], "..")] {
+            await #expect(throws: BackendError.self) {
+                try await backend.create(
+                    languages: languages,
+                    namespace: namespace,
+                    key: "k",
+                    fallbackValue: nil,
+                    isUpdate: false
+                )
+            }
+        }
+        #expect(server.requests.isEmpty)
+    }
+}
 #endif
 
 @Suite("HTTPBackend configuration")
@@ -287,6 +436,12 @@ struct HTTPBackendConfigurationTests {
         #expect(throws: HTTPBackendError.self) { try HTTPBackend(baseURL: "https://example.com", timeoutSeconds: 0) }
         #expect((try? HTTPBackend(baseURL: "https://example.com:8443/app/")) != nil)
         #expect((try? HTTPBackend(baseURL: "http://localhost:3000")) != nil)
+    }
+
+    @Test func addPathDefaultsToI18nextHTTPBackends() throws {
+        let backend = try HTTPBackend(baseURL: "https://example.com")
+        #expect(backend.addPath == "locales/add/{{lng}}/{{ns}}")
+        #expect(backend.expandedAddPath(language: "pt", namespace: "common").path == "locales/add/pt/common")
     }
 
     @Test func expandsLoadPath() throws {

@@ -45,12 +45,17 @@ Included: `InMemoryBackend`, `FileSystemBackend`, and `HTTPBackend` (separate `I
 o.backend = try HTTPBackend(
     baseURL: "https://cdn.example.com/app",
     loadPath: "locales/{{lng}}/{{ns}}.json",      // query values may use the placeholders too
+    addPath: "locales/add/{{lng}}/{{ns}}",        // where `saveMissing` posts keys; nil turns it off
     headers: ["X-Api-Key": key]
 )
 ```
 
 2xx is parsed as JSON; 404/410 are `notFound`; 408/425/429/5xx and network errors are `HTTPTransientError` (retried);
 anything else is final.
+
+With `saveMissing`, each missing key is sent to `addPath` as a JSON `POST` once per language, with the body
+`{"<key>": "<default value>"}` (an empty string when there is no default), as i18next-http-backend does. Every language
+is attempted, and a failure is not retried.
 
 ## Formatters
 

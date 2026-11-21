@@ -36,6 +36,23 @@ await i18n.initialize()
 
 `{{lng}}` and `{{ns}}` are substituted in the path and in query values, so `i18n/{{ns}}.json?lng={{lng}}` works too.
 
+### Saving missing keys
+
+With `saveMissing` on and no `missingKeyHandler`, keys `t` could not find reach the backend's `create`, which posts
+them to ``HTTPBackend/addPath`` (`locales/add/{{lng}}/{{ns}}` by default, the same as i18next-http-backend; `nil` turns
+it off):
+
+```http
+POST /locales/add/pt/translation
+Content-Type: application/json
+
+{"new.key": "Default text"}
+```
+
+The body holds the key and its default value (an empty string when there is none). There is one request per language;
+all of them are attempted, and ``HTTPTransientError`` or ``HTTPBackendError/unexpectedStatus(_:)`` reports the first
+failure. The connector sends each key once, without retrying.
+
 ### Status codes
 
 | Response | Result |
