@@ -147,6 +147,66 @@ t("title")                          // "Settings"
 t(["missing", "language"])          // "Language"
 ```
 
+## Seeding resources
+
+``I18next/hydrate(_:lng:)`` starts an instance from resources produced elsewhere (a server-rendered page, a bundled
+snapshot) without loading anything: it replaces what the store holds, keeps those namespaces loaded, marks an instance
+with a backend as initialized, and switches to `lng`. Each part works once, so calling it again (a view that appears
+twice) does nothing. ``I18next/getDataByLanguage(lng:)`` reads back what a language holds.
+
+```swift
+let i18n = I18next { $0.lng = "en" }
+i18n.hydrate(["en": ["translation": ["hello": "Hello"]], "pt": ["translation": ["hello": "Olá"]]], lng: "pt")
+i18n.t("hello")   // "Olá"
+```
+
+## Cloning an instance
+
+``I18next/cloneInstance(forkResourceStore:_:)`` makes a second instance for a request, a screen or a test: it starts in
+the language the original is in, shares its resources (or, with `forkResourceStore: true`, copies them), and takes the
+options you change in the closure.
+
+```swift
+let forRequest = i18n.cloneInstance { $0.lng = "de" }   // same store, own language
+let sandbox = i18n.cloneInstance(forkResourceStore: true)
+sandbox.addResourceBundle(lng: "en", ns: "translation", resources: ["only": "here"])
+```
+
+After the clone is made:
+
+- **Language** is the clone's own; changing it doesn't move the original, and the other way round. Settings that
+  derive from the options (`fallbackLng`, `load`, `supportedLngs`, interpolation, separators) follow the clone's
+  options.
+- **Resources** are shared unless forked. A shared store reports its changes on both instances' ``I18next/events``; a
+  forked one only on the clone's.
+- **Loading** through a backend is shared along with the store: a bundle is read once, and the original's
+  ``I18next/Options/backend`` and ``I18next/Options/backendOptions`` apply. A forked store loads through its own
+  connector. Being initialized (``I18next/initialize()``, ``I18next/hasLoadedNamespace(_:lng:)``) is per instance.
+- **Formats and post-processors** of the original are visible to the clone, including those registered later;
+  whatever the clone registers stays with it.
+- **Events** are the clone's own: its language changes, its loads, its missing keys.
+- ``I18next/hydrate(_:lng:)`` does nothing on a clone (``I18next/isClone``), since it may share the store that was
+  seeded.
+
+i18next differs in a few places, on purpose: its clone starts in the language the original was *configured* with, even
+if it has changed since; it keeps the original's language settings when the clone's options differ; and a format the
+clone adds is added to the original too.
+
+## Not ported: `overloadTranslationOptionHandler`
+
+i18next lets `t("key", "default value")` and `t("key", "default", { ... })` stand for `t("key", { defaultValue: ... })`,
+and `overloadTranslationOptionHandler` turns such positional arguments into an options object. A Swift call states the
+options with ``TranslationOptions`` (`t("key", .init(defaultValue: "default value"))`), checked at compile time, so
+there is no untyped argument list to interpret. If you prefer the short form, an extension on ``I18next`` does it:
+
+```swift
+extension I18next {
+    func t(_ key: String, _ defaultValue: String) -> String {
+        t(key, TranslationOptions(defaultValue: defaultValue))
+    }
+}
+```
+
 ## Language and direction
 
 ``I18next/resolvedLanguage`` is the first language in the hierarchy that has translations, which is the one to mark in a

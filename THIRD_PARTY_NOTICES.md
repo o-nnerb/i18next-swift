@@ -5,10 +5,14 @@
 This package is a Swift port of [i18next](https://github.com/i18next/i18next), released under the MIT License
 (see `LICENSE`, which keeps the original copyright notice).
 
-## Unicode CLDR plural data
+## Unicode CLDR plural and alias data
 
 `Sources/I18next/CLDRPluralData.swift` and `Tests/I18nextTests/CLDRPluralSamples.swift` are generated from the
 Unicode CLDR files `common/supplemental/plurals.xml` and `ordinals.xml` (CLDR 49) by `Scripts/generate-plurals.py`.
+
+`Sources/I18next/BCP47AliasData.swift` holds the CLDR language, region and script aliases
+(`common/supplemental/supplementalMetadata.xml`) as the ICU of the machine running
+`Scripts/generate-bcp47-aliases.swift` exposes them through `Intl.getCanonicalLocales`.
 
 COPYRIGHT AND PERMISSION NOTICE
 

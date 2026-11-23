@@ -72,8 +72,9 @@ relative times, `unit` lists and number styles, and time zone display names.
 
 ## Conformance
 
-`Tests/I18nextTests/ConformanceFixtures.swift` holds 1,615 scenarios, most taken from the i18next test suite (lookup, plurals,
-context, namespaces, separators, interpolation, nesting, language hierarchy, store lookup, post-processors), each with the answer
+`Tests/I18nextTests/ConformanceFixtures.swift` holds 2,042 scenarios, most taken from the i18next test suite (lookup, plurals,
+context, namespaces, separators, interpolation, nesting, language hierarchy, store lookup, post-processors; also written for
+this port: store writes, `hydrate`, `cloneInstance` and BCP 47 aliases), each with the answer
 **i18next 27.2.2 itself gives**. `Scripts/conformance/generate.swift` computes them by running the real i18next inside
 JavaScriptCore, so no Node is needed (macOS only):
 
@@ -96,17 +97,37 @@ The script also writes `Tests/I18nextTests/CLDRPluralSamples.swift`, CLDR's own 
 conformance tests run every rule against them. To update, pass a newer tag and run `swift test`.
 Compact-notation operands (`c`, `e`) are always 0, as for any plain number.
 
+## BCP 47 aliases
+
+`Sources/I18next/BCP47AliasData.swift` holds the language, region, script and sign-language aliases that
+`Intl.getCanonicalLocales` applies (`iw` → `he`, `UK` → `GB`, `840` → `US`, `sgn-US` → `ase`). It is read from the
+system's ICU through JavaScriptCore, the same engine the conformance scenarios run i18next in, so the two agree; it
+needs macOS to regenerate:
+
+```sh
+swift Scripts/generate-bcp47-aliases.swift Sources/I18next/BCP47AliasData.swift
+```
+
+Not covered: the values of `-u-` keywords (`-u-ca-islamicc` → `-u-ca-islamic-civil`) and the old grandfathered tags
+(`i-klingon`, `en-gb-oed`), which JavaScriptCore rejects anyway. `sgn-BE-FR`, `sgn-BE-NL` and `sgn-CH-DE` become
+`sfb`, `vgt` and `sgg` as the CLDR defines; JavaScriptCore's ICU rejects them, so that one scenario is a known
+difference.
+
 ## Status
 
-Implemented: resource store, language hierarchy (`load`, `supportedLngs`, script parts, per-language fallbacks),
+Implemented: resource store (`getDataByLanguage` included), language hierarchy (`load`, `supportedLngs`, script
+parts, per-language fallbacks, BCP 47 aliases),
 CLDR 49 plurals (cardinal for 227 locales, ordinal for 110, generated), context, namespaces, interpolation with
 escaping, nesting, `returnObjects`, `joinArrays`, `returnDetails`, custom formats, `postProcess`, `getFixedT` (with
 `keyPrefix`), `resolvedLanguage`, `dir`, `hasLoadedNamespace`, async backends, language detection, events,
 `saveMissing` with `missingKeyHandler` / backend `create`, `missingInterpolationHandler`, `returnNull`,
-`returnedObjectHandler`, `missingKeyNoValueFallbackToKey`, `useRawValueToEscape`, and conformance with i18next 27.2.2 (1,615 scenarios).
+`returnedObjectHandler`, `missingKeyNoValueFallbackToKey`, `useRawValueToEscape`, `hydrate`, `cloneInstance`
+(shared or forked store), and conformance with i18next 27.2.2 (2,042 scenarios, 4 known differences).
 
 Also: the `I18nextFormatters` product (`number`, `currency`, `datetime`, `relativetime`, `list`).
 
-Not yet: `i18nFormat`, `overloadTranslationOptionHandler`, `cloneInstance`, `hydrate`, `getDataByLanguage`, and
-ICU-driven BCP 47 aliases beyond a small table (`sgn-BE-FR` → `sfb`). `alwaysFormat` has no equivalent: i18next's own
-formatter returns the value untouched when no format is named.
+Not yet: `i18nFormat`, and the `-u-` keyword aliases of BCP 47 tags.
+
+Not ported, by design: `overloadTranslationOptionHandler` turns `t("key", "default")`-style positional arguments into
+an options object; `t` takes a typed `TranslationOptions`, so there is nothing to interpret (an extension can add the
+short form). `alwaysFormat` has no equivalent: i18next's own formatter returns the value untouched when no format is named.
