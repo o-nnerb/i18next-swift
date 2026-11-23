@@ -68,7 +68,8 @@ are the known gaps:
   no unit for `day`, `week`, `month`, `year`, `percent`, `mile-scandinavian`, `mile-per-gallon`, compounds such as
   `kilometer-per-day`, and does not translate `millisecond`, `microsecond` and `nanosecond` for every locale; those
   are left as written. The others (length, mass, volume, temperature, speed, information storage, `second` to
-  `hour`, …) match `Intl`.
+  `hour`, …) match `Intl`. Outside Apple platforms Foundation has no `Measurement.FormatStyle`, so `style: unit` leaves
+  every value as written there.
 - Dates: a JavaScript number is milliseconds since the epoch, as in i18next. Text is also read as an ISO 8601 date,
   which JSON has no type for. `UTC`, `GMT` and `Etc/UTC` are one zone named "UTC", as in `Intl`; other zone names
   (`timeZoneName`, `timeStyle: full`) are Foundation's, and matched `Intl` in every fixture on this macOS.

@@ -16,6 +16,7 @@ enum Units {
         locale: Locale,
         number: FloatingPointFormatStyle<Double>
     ) throws -> String {
+        #if canImport(Darwin)
         guard let unit = units[name] else {
             throw FormatFailure(
                 sanctioned.contains(name)
@@ -23,8 +24,16 @@ enum Units {
             )
         }
         return unit(value, display, locale, number)
+        #else
+        // swift-corelibs-foundation and swift-foundation have no `Measurement.FormatStyle`.
+        throw FormatFailure(
+            sanctioned.contains(name)
+                ? "unit formatting of \(name) needs Apple's Foundation" : "invalid unit \(name)"
+        )
+        #endif
     }
 
+    #if canImport(Darwin)
     private typealias Formatter = @Sendable (Double, String, Locale, FloatingPointFormatStyle<Double>) -> String
 
     private static func measure<Unit: Dimension>(_ unit: Unit) -> Formatter {
@@ -44,6 +53,7 @@ enum Units {
             return style.format(Measurement(value: value, unit: unit))
         }
     }
+    #endif
 
     /// ECMA-402's sanctioned unit identifiers, `X-per-Y` aside.
     private static let sanctioned: Set<String> = [
@@ -54,6 +64,7 @@ enum Units {
         "second", "stone", "terabit", "terabyte", "week", "yard", "year",
     ]
 
+    #if canImport(Darwin)
     private static let units: [String: Formatter] = [
         "acre": measure(UnitArea.acres),
         "bit": measure(UnitInformationStorage.bits),
@@ -95,4 +106,5 @@ enum Units {
         "terabyte": measure(UnitInformationStorage.terabytes),
         "yard": measure(UnitLength.yards),
     ]
+    #endif
 }
