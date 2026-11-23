@@ -4,7 +4,8 @@
 // swift-format-ignore-file
 
 // Generates the locale tables behind I18nextFormatters by asking the ICU that ships with this Mac (through
-// JavaScriptCore's `Intl`) for the patterns Foundation can't hand out: what `Intl.ListFormat` joins `unit` lists with.
+// JavaScriptCore's `Intl`) for the patterns Foundation can't hand out: what `Intl.ListFormat` joins `unit` lists with,
+// and the phrases of `Intl.RelativeTimeFormat` for a fixed set of locales (`relativeTimeTags`).
 //
 //   swift Scripts/generate-formatter-data.swift [output directory]
 //
@@ -34,20 +35,43 @@ let tags: [String] = {
     for identifier in Locale.availableIdentifiers {
         let tag = identifier.replacingOccurrences(of: "_", with: "-")
         guard !tag.contains("@"), tag.split(separator: "-").count <= 3, tag != "root" else { continue }
+        let parts = tag.split(separator: "-")
+        // `zh-TW` is `zh-Hant-TW`, which the runtime looks up under that name.
+        if parts.first == "zh", parts.count == 2, parts[1].count == 2 { continue }
         seen.insert(tag)
     }
     return seen.sorted()
 }()
 context.setObject(tags, forKeyedSubscript: "tags" as NSString)
 
-/// Keeps a locale only when its table differs from what dropping subtags would give.
+/// The locale a table is inherited from when a tag has none: CLDR's parent, which is the tag minus its last subtag
+/// except for Latin American Spanish (`es-419`) and Portuguese outside Brazil (`pt-PT`). `FormatOptions.lookupTags`
+/// follows the same chain at runtime.
 func parent(_ tag: String) -> String? {
-    tag.contains("-") ? String(tag[..<tag.lastIndex(of: "-")!]) : nil
+    guard tag.contains("-") else { return nil }
+    let parts = tag.split(separator: "-").map(String.init)
+    let latinAmerica: Set<String> = [
+        "AR", "BO", "CL", "CO", "CR", "CU", "DO", "EC", "GT", "HN", "MX", "NI", "PA", "PE", "PR", "PY", "SV", "US", "UY",
+        "VE",
+    ]
+    if parts.count == 2, parts[0] == "es", latinAmerica.contains(parts[1]) { return "es-419" }
+    if parts.count == 2, parts[0] == "pt", parts[1] != "BR", parts[1] != "PT" { return "pt-PT" }
+    return parts.dropLast().joined(separator: "-")
 }
 
+/// Keeps a locale only when its table differs from what it would inherit.
 func dedupe<Value: Equatable>(_ tables: [String: Value]) -> [String: Value] {
     var kept: [String: Value] = [:]
-    for tag in tables.keys.sorted(by: { ($0.filter { $0 == "-" }.count, $0) < ($1.filter { $0 == "-" }.count, $1) }) {
+    func depth(_ tag: String) -> Int {
+        var count = 0
+        var up = parent(tag)
+        while let candidate = up {
+            count += 1
+            up = parent(candidate)
+        }
+        return count
+    }
+    for tag in tables.keys.sorted(by: { (depth($0), $0) < (depth($1), $1) }) {
         var inherited: Value?
         var up = parent(tag)
         while let candidate = up {
@@ -132,3 +156,77 @@ try! listSource.write(
     encoding: .utf8
 )
 print("CLDRListPatternData.swift: \(lists.count) of \(listTables.count) locales")
+
+// MARK: - Relative times
+
+/// The locales `relativetime` has data for: widely used languages, and the regional variants whose phrases differ
+/// from their language's and that are widely used (a locale of the same language without data of its own reads the
+/// language's, or `es-419`'s for Latin America).
+let relativeTimeTags = [
+    "ar", "bg", "bn", "ca", "cs", "da", "de", "el", "en", "en-AU", "en-GB", "en-IN", "es", "es-419", "es-MX", "es-US",
+    "fa", "fi", "fr", "fr-CA", "he", "hi", "hr", "hu", "id", "it", "ja", "ko", "ms", "nb", "nl", "no", "pl", "pt", "pt-PT", "ro", "ru", "sk", "sl",
+    "sr", "sv", "th", "tr", "uk", "vi", "zh", "zh-Hant", "zh-Hant-HK",
+]
+context.setObject(relativeTimeTags, forKeyedSubscript: "relativeTimeTags" as NSString)
+
+/// One line per phrase: `width|unit|key|text`, where the key is `f:<plural category>` (in 3 days), `p:<category>`
+/// (3 days ago) or `n:<-2...2>` (`numeric: auto`: "tomorrow"), and `{0}` stands for the number. Which plural category a
+/// number is in is told by `Intl.PluralRules`, and one phrase is kept for each category the locale has.
+let relativeTimeProbe = """
+(function () {
+    var units = ['second', 'minute', 'hour', 'day', 'week', 'month', 'quarter', 'year'];
+    var samples = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 20, 21, 22, 100, 101, 1000, 1000000, 0.1, 0.5, 1.1, 1.5, 2.5, 10.5];
+    var result = {};
+    relativeTimeTags.forEach(function (tag) {
+        if (Intl.RelativeTimeFormat.supportedLocalesOf([tag]).length === 0) throw new Error('no data for ' + tag);
+        var plurals = new Intl.PluralRules(tag), numbers = new Intl.NumberFormat(tag), rows = [];
+        ['long', 'short', 'narrow'].forEach(function (width) {
+            var always = new Intl.RelativeTimeFormat(tag, { style: width, numeric: 'always' });
+            var auto = new Intl.RelativeTimeFormat(tag, { style: width, numeric: 'auto' });
+            units.forEach(function (unit) {
+                [1, -1].forEach(function (sign) {
+                    var seen = {};
+                    samples.forEach(function (n) {
+                        var category = plurals.select(n);
+                        if (seen[category]) return;
+                        seen[category] = true;
+                        var text = always.format(sign * n, unit), shown = numbers.format(n);
+                        if (text.indexOf('|') >= 0) throw new Error('separator in ' + text);
+                        rows.push([width, unit, (sign > 0 ? 'f:' : 'p:') + category, text.indexOf(shown) >= 0 ? text.replace(shown, '{0}') : text].join('|'));
+                    });
+                });
+                [-2, -1, 0, 1, 2].forEach(function (n) {
+                    var text = auto.format(n, unit);
+                    if (text !== always.format(n, unit)) rows.push([width, unit, 'n:' + n, text].join('|'));
+                });
+            });
+        });
+        result[tag] = rows.join('\\n');
+    });
+    return JSON.stringify(result);
+})()
+"""
+let relativeTimeTables = try! JSONDecoder().decode(
+    [String: String].self,
+    from: Data(context.evaluateScript(relativeTimeProbe)!.toString()!.utf8)
+)
+let relativeTimes = dedupe(relativeTimeTables)
+
+var relativeSource = header + "enum CLDRRelativeTimeData {\n"
+relativeSource += "    /// `Intl.RelativeTimeFormat` phrases by locale, one `width|unit|key|text` line each: the key is\n"
+relativeSource += "    /// `f:<plural category>` (in 3 days), `p:<category>` (3 days ago) or `n:<-2...2>` (`numeric: auto`), and `{0}`\n"
+relativeSource += "    /// stands for the number.\n"
+relativeSource += "    static let tables: [String: String] = [\n"
+for tag in relativeTimes.keys.sorted() {
+    precondition(!relativeTimes[tag]!.contains("\"\"\"#"))
+    relativeSource += "        \(literal(tag)): #\"\"\"\n"
+    for line in relativeTimes[tag]!.split(separator: "\n") { relativeSource += "        \(line)\n" }
+    relativeSource += "        \"\"\"#,\n"
+}
+relativeSource += "    ]\n}\n"
+try! relativeSource.write(
+    to: outputDirectory.appendingPathComponent("CLDRRelativeTimeData.swift"),
+    atomically: true,
+    encoding: .utf8
+)
+print("CLDRRelativeTimeData.swift: \(relativeTimes.count) of \(relativeTimeTables.count) locales")

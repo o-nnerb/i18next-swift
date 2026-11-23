@@ -56,7 +56,9 @@ struct FormatOptions {
     }
 
     /// The tags to look a locale up under in CLDR data, most specific first: `pt-br` is tried as `pt-BR`, then `pt`.
-    /// Unicode extensions (`-u-nu-latn`) and POSIX suffixes (`@x`, `.UTF-8`) are not part of the lookup.
+    /// Unicode extensions (`-u-nu-latn`) and POSIX suffixes (`@x`, `.UTF-8`) are not part of the lookup. CLDR's parent
+    /// locales are followed where they aren't the plain truncation: `es-MX` inherits from `es-419`, `pt-AO` from
+    /// `pt-PT`, and Chinese without a script is `zh-Hant` in Taiwan, Hong Kong and Macao, `zh-Hans` elsewhere.
     static func lookupTags(for language: String?) -> [String] {
         guard let language, !language.isEmpty else { return lookupTags(for: Locale.current.identifier) }
         var text = language.replacingOccurrences(of: "_", with: "-")
@@ -71,7 +73,25 @@ struct FormatOptions {
             default: parts.append(String(part))
             }
         }
-        return (1...max(parts.count, 1)).reversed().map { parts.prefix($0).joined(separator: "-") }
+        guard let languageCode = parts.first else { return [] }
+        let hasScript = parts.count > 1 && parts[1].count == 4
+        let region = parts.dropFirst().first { $0.count == 2 || ($0.count == 3 && $0.allSatisfy(\.isNumber)) }
+
+        if languageCode == "zh", !hasScript {
+            parts.insert(["TW", "HK", "MO"].contains(region) ? "Hant" : "Hans", at: 1)
+        }
+        var tags = (1...parts.count).reversed().map { parts.prefix($0).joined(separator: "-") }
+        let latinAmerica: Set<String> = [
+            "419", "AR", "BO", "CL", "CO", "CR", "CU", "DO", "EC", "GT", "HN", "MX", "NI", "PA", "PE", "PR", "PY", "SV",
+            "US", "UY", "VE",
+        ]
+        if languageCode == "es", let region, latinAmerica.contains(region), region != "419" {
+            tags.insert("es-419", at: tags.count - 1)
+        }
+        if languageCode == "pt", let region, region != "BR" {
+            tags.insert("pt-PT", at: tags.count - 1)
+        }
+        return tags
     }
 
     /// The entry of a generated CLDR table for `language`: its own, or the nearest parent's.

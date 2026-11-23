@@ -131,6 +131,62 @@ enum DateFormats {
 
     // MARK: relativetime
 
+    private static let relativeUnits = ["second", "minute", "hour", "day", "week", "month", "quarter", "year"]
+
+    /// Phrases come from `CLDRRelativeTimeData` for the locales it covers, which is what `Intl` prints, fractions and
+    /// quarters included, and on every platform. For other locales Apple's `RelativeDateTimeFormatter` is used, which
+    /// takes whole numbers only and has no quarter; elsewhere the value is left as it is.
+    static func relativetime(_ value: JSONValue, _ context: I18next.FormatContext) throws -> JSONValue {
+        guard let amount = value.asNumber, amount.isFinite else { throw FormatFailure("not a number") }
+        let options = FormatOptions(values: context.options)
+
+        var unitName = options.string("range") ?? "day"
+        if unitName.hasSuffix("s") { unitName.removeLast() }
+        guard relativeUnits.contains(unitName) else { throw FormatFailure("invalid unit \(unitName)") }
+
+        let numeric = try options.choice("numeric", ["always", "auto"]) ?? "always"
+        let width = try options.choice("style", ["long", "short", "narrow"]) ?? "long"
+
+        if let table = FormatOptions.lookup(CLDRRelativeTimeData.tables, for: context.language) {
+            return .string(phrase(amount, unit: unitName, numeric: numeric, width: width, table: table, context))
+        }
+        return try systemRelativeTime(amount, unit: unitName, numeric: numeric, width: width, context)
+    }
+
+    private static func phrase(
+        _ amount: Double,
+        unit: String,
+        numeric: String,
+        width: String,
+        table: String,
+        _ context: I18next.FormatContext
+    ) -> String {
+        let prefix = "\(width)|\(unit)|"
+        var phrases: [Substring: Substring] = [:]
+        for line in table.split(separator: "\n") where line.hasPrefix(prefix) {
+            let fields = line.dropFirst(prefix.count).split(
+                separator: "|",
+                maxSplits: 1,
+                omittingEmptySubsequences: false
+            )
+            if fields.count == 2 { phrases[fields[0]] = fields[1] }
+        }
+
+        if numeric == "auto", amount == amount.rounded(), abs(amount) <= 2, let named = phrases["n:\(Int(amount))"] {
+            return String(named)
+        }
+        let direction = amount < 0 || (amount == 0 && amount.sign == .minus) ? "p" : "f"
+        let magnitude = abs(amount)
+        let category = PluralResolver().category(for: magnitude, lng: context.language ?? "en").rawValue
+        let pattern = phrases["\(direction):\(category)"] ?? phrases["\(direction):other"] ?? ""
+
+        // Numbers are shown to three decimals at most, like `Intl.NumberFormat`.
+        let locale = FormatOptions.locale(for: context.language)
+        let number = FloatingPointFormatStyle<Double>(locale: locale).precision(.fractionLength(0...3))
+            .rounded(rule: .toNearestOrAwayFromZero).format(magnitude)
+        return pattern.replacingOccurrences(of: "{0}", with: number)
+    }
+
     #if canImport(Darwin)
 
     private static let units: [String: Calendar.Component] = [
@@ -138,16 +194,14 @@ enum DateFormats {
         "quarter": .quarter, "year": .year,
     ]
 
-    static func relativetime(_ value: JSONValue, _ context: I18next.FormatContext) throws -> JSONValue {
-        guard let amount = value.asNumber, amount.isFinite else { throw FormatFailure("not a number") }
-        let options = FormatOptions(values: context.options)
-
-        var unitName = options.string("range") ?? "day"
-        if unitName.hasSuffix("s") { unitName.removeLast() }
+    private static func systemRelativeTime(
+        _ amount: Double,
+        unit unitName: String,
+        numeric: String,
+        width: String,
+        _ context: I18next.FormatContext
+    ) throws -> JSONValue {
         guard let unit = units[unitName] else { throw FormatFailure("invalid unit \(unitName)") }
-
-        let numeric = try options.choice("numeric", ["always", "auto"]) ?? "always"
-        let width = try options.choice("style", ["long", "short", "narrow"]) ?? "long"
 
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = FormatOptions.locale(for: context.language)
@@ -169,9 +223,16 @@ enum DateFormats {
         return .string(text)
     }
     #else
-    /// swift-corelibs-foundation has no `RelativeDateTimeFormatter`, so on other platforms the value is left as it is.
-    static func relativetime(_ value: JSONValue, _ context: I18next.FormatContext) throws -> JSONValue {
-        throw FormatFailure("relative time formatting needs Apple's Foundation")
+    /// swift-corelibs-foundation has no `RelativeDateTimeFormatter`, so for a locale without data the value is left as
+    /// it is.
+    private static func systemRelativeTime(
+        _ amount: Double,
+        unit unitName: String,
+        numeric: String,
+        width: String,
+        _ context: I18next.FormatContext
+    ) throws -> JSONValue {
+        throw FormatFailure("relative times of \(context.language ?? "this locale") need Apple's Foundation")
     }
     #endif
 }

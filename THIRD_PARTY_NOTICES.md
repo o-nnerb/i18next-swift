@@ -50,8 +50,9 @@ authorization of the copyright holder.
 
 SPDX-License-Identifier: Unicode-3.0
 
-## Unicode CLDR list patterns
+## Unicode CLDR list and relative time patterns
 
-`Sources/I18nextFormatters/CLDRListPatternData.swift` holds the patterns `Intl.ListFormat` joins `unit` lists with. They
+`Sources/I18nextFormatters/CLDRListPatternData.swift` holds the patterns `Intl.ListFormat` joins `unit` lists with, and
+`CLDRRelativeTimeData.swift` the phrases of `Intl.RelativeTimeFormat` for 48 locales. They
 are Unicode CLDR data as shipped in the ICU of macOS, read out by `Scripts/generate-formatter-data.swift`, and are
 under the same Unicode license and copyright notice as the plural data above (Copyright © 1991-2025 Unicode, Inc.).
