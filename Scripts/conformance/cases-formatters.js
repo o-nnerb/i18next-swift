@@ -15,6 +15,13 @@ function formatSuite(name, locales, templates, variables) {
     });
 }
 
+// Every scenario of a suite carries the suite's whole resource set, so long template lists are cut into suites of six.
+function formatSuiteChunked(name, locales, templates, variables) {
+    for (var start = 0, part = 1; start < templates.length; start += 6, part += 1) {
+        formatSuite(name + '/' + part, locales, templates.slice(start, start + 6), variables);
+    }
+}
+
 var __someLocales = ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP', 'es-ES', 'ar-EG', 'hi-IN', 'ru-RU'];
 
 // MARK: number
@@ -46,6 +53,54 @@ formatSuite('format/number[strings and bad input]', ['en-US', 'de-DE'], [
 formatSuite('format/number[compact]', ['en-US', 'de-DE', 'ja-JP'], [
     '{{v, number(notation: compact)}}'
 ], [{ v: 1234 }, { v: 1234567 }, { v: 12 }]);
+
+// style: unit. `unit` is one of ECMA-402's sanctioned units (or `<unit>-per-<unit>`); `unitDisplay` is long, short or narrow.
+formatSuiteChunked('format/number[unit]', __someLocales, [
+    '{{v, number(style: unit; unit: kilometer)}}',
+    '{{v, number(style: unit; unit: kilometer; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: kilometer; unitDisplay: narrow)}}',
+    '{{v, number(style: unit; unit: kilometer-per-hour)}}',
+    '{{v, number(style: unit; unit: kilometer-per-hour; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: meter-per-second; unitDisplay: narrow)}}',
+    '{{v, number(style: unit; unit: celsius; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: fahrenheit)}}',
+    '{{v, number(style: unit; unit: liter; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: megabyte)}}',
+    '{{v, number(style: unit; unit: gigabyte; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: byte; unitDisplay: narrow)}}',
+    '{{v, number(style: unit; unit: kilogram; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: mile)}}',
+    '{{v, number(style: unit; unit: foot; unitDisplay: narrow)}}',
+    '{{v, number(style: unit; unit: degree)}}',
+    '{{v, number(style: unit; unit: hour; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: minute)}}',
+    '{{v, number(style: unit; unit: second; unitDisplay: narrow)}}',
+    '{{v, number(style: unit; unit: kilometer; minimumFractionDigits: 2)}}',
+    '{{v, number(style: unit; unit: kilometer; maximumFractionDigits: 0; unitDisplay: long)}}',
+    '{{v, number(style: unit; unit: kilometer; signDisplay: always)}}',
+    '{{v, number(style: unit; unit: kilometer; useGrouping: false)}}'
+], [{ v: 1 }, { v: 2.5 }, { v: -16 }, { v: 1234.5 }, { v: 0 }]);
+
+formatSuiteChunked('format/number[unit, other units]', __someLocales, [
+    'acre', 'hectare', 'gram', 'mile-per-hour', 'gallon', 'yard', 'inch', 'terabit',
+    'petabyte', 'ounce', 'pound', 'milliliter', 'centimeter', 'kilobit', 'meter', 'millimeter', 'kilobyte', 'megabit',
+    'gigabit', 'terabyte', 'fluid-ounce', 'stone', 'bit'
+].map(function (unit) { return '{{v, number(style: unit; unit: ' + unit + '; unitDisplay: long)}} {{v, number(style: unit; unit: ' + unit + ')}}'; }), [{ v: 1 }, { v: 2.5 }]);
+
+// What Foundation can't format (documented in the tests): a sample is enough to keep the difference visible.
+formatSuiteChunked('format/number[unit, unsupported]', ['en-US', 'de-DE'], [
+    'day', 'week', 'month', 'year', 'percent', 'mile-per-gallon', 'kilometer-per-day', 'mile-scandinavian', 'millisecond',
+    'microsecond', 'nanosecond'
+].map(function (unit) { return '{{v, number(style: unit; unit: ' + unit + '; unitDisplay: long)}}'; }), [{ v: 2.5 }]);
+
+formatSuiteChunked('format/number[unit, bad input]', ['en-US', 'de-DE'], [
+    '{{v, number(style: unit)}}',
+    '{{v, number(style: unit; unit: parsec)}}',
+    '{{v, number(style: unit; unit: kilometer; unitDisplay: huge)}}',
+    '{{v, number(style: unit; unit: kilometer-per-)}}',
+    '{{v, number(unit: kilometer)}}',
+    '{{v, number(style: unit; unit: Kilometer)}}'
+], [{ v: 3 }, { v: 'abc' }]);
 
 // MARK: currency
 
@@ -101,6 +156,33 @@ formatSuite('format/datetime[bad input]', ['en-US'], [
     '{{d, datetime(dateStyle: nope; ' + __zone + ')}}'
 ], [{ d: __when }, { d: 'not a date' }, { d: true }, { d: false }, { d: '1700000000000' }]);
 
+// Time zone names: 1_689_000_000_000 ms is 2023-07-10T14:00:00Z, so the zones with daylight saving are in summer time.
+var __summer = 1689000000000;
+var __zoneNames = ['short', 'long', 'shortOffset', 'longOffset', 'shortGeneric', 'longGeneric'];
+var __zones = ['UTC', 'America/Sao_Paulo', 'America/New_York', 'Asia/Tokyo', 'Europe/Berlin', 'Asia/Kolkata', 'Australia/Sydney'];
+var __zoneTemplates = [];
+__zoneNames.forEach(function (name) {
+    __zones.forEach(function (zone) {
+        __zoneTemplates.push('{{d, datetime(hour: numeric; minute: numeric; timeZoneName: ' + name + '; timeZone: ' + zone + ')}}');
+    });
+});
+formatSuiteChunked('format/datetime[timeZoneName]', ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP', 'es-ES'], __zoneTemplates, [{ d: __when }, { d: __summer }]);
+
+formatSuiteChunked('format/datetime[timeStyle with zone]', ['en-US', 'pt-BR', 'de-DE', 'ja-JP'], [
+    '{{d, datetime(timeStyle: long; timeZone: UTC)}}',
+    '{{d, datetime(timeStyle: full; timeZone: UTC)}}',
+    '{{d, datetime(dateStyle: full; timeStyle: full; timeZone: UTC)}}',
+    '{{d, datetime(timeStyle: long; timeZone: America/Sao_Paulo)}}',
+    '{{d, datetime(timeStyle: full; timeZone: America/New_York)}}',
+    '{{d, datetime(dateStyle: long; timeStyle: long; timeZone: Europe/Berlin)}}',
+    '{{d, datetime(dateStyle: medium; timeStyle: full; timeZone: Asia/Tokyo)}}',
+    '{{d, datetime(year: numeric; month: short; day: numeric; hour: numeric; minute: numeric; timeZoneName: short; timeZone: America/New_York)}}',
+    '{{d, datetime(weekday: long; hour: numeric; timeZoneName: long; timeZone: Asia/Kolkata)}}',
+    '{{d, datetime(timeZoneName: short; timeZone: UTC)}}',
+    '{{d, datetime(timeZoneName: long; timeZone: Europe/Berlin)}}',
+    '{{d, datetime(timeZoneName: nope; timeZone: UTC)}}'
+], [{ d: __when }, { d: __summer }]);
+
 // MARK: relativetime
 
 formatSuite('format/relativetime', ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP', 'es-ES'], [
@@ -129,6 +211,21 @@ formatSuite('format/list', ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP', 'es-ES'
     '{{l, list(type: disjunction; style: short)}}',
     '{{l, list(type: unit)}}'
 ], [{ l: ['a', 'b', 'c'] }, { l: ['a', 'b'] }, { l: ['a'] }, { l: [] }, { l: [1, 2, 3] }, { l: 'abc' }]);
+
+var __moreLocales = ['en-GB', 'zh-CN', 'zh-Hant-TW', 'ko-KR', 'it-IT', 'pt-PT', 'es-MX', 'nl-NL', 'tr-TR', 'pl-PL', 'he-IL', 'id-ID', 'sv-SE', 'th-TH', 'vi-VN', 'uk-UA'];
+
+formatSuiteChunked('format/list[unit]', __someLocales.concat(__moreLocales), [
+    '{{l, list(type: unit)}}',
+    '{{l, list(type: unit; style: long)}}',
+    '{{l, list(type: unit; style: short)}}',
+    '{{l, list(type: unit; style: narrow)}}',
+    '{{l, list(type: conjunction; style: narrow)}}',
+    '{{l, list(type: disjunction; style: narrow)}}'
+], [{ l: ['a', 'b', 'c'] }, { l: ['a', 'b'] }, { l: ['a'] }, { l: [] }, { l: ['5 km', '3 m', '2 cm', '1 mm'] }]);
+
+formatSuite('format/list[other locales]', ['ar-EG', 'hi-IN', 'ru-RU'], [
+    '{{l, list}}', '{{l, list(type: disjunction)}}', '{{l, list(style: short)}}', '{{l, list(style: narrow)}}'
+], [{ l: ['a', 'b', 'c'] }, { l: ['a', 'b'] }]);
 
 // MARK: format chains and unknown formats
 

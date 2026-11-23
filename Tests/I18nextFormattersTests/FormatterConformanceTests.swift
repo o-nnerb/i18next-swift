@@ -65,10 +65,26 @@ struct FormatterCase: Sendable, CustomTestStringConvertible {
     }
 }
 
+private let unsupportedUnits: Set<String> = [
+    "day", "week", "month", "year", "percent", "mile-per-gallon", "mile-scandinavian", "kilometer-per-day",
+    "microsecond", "millisecond", "nanosecond",
+]
+
+extension FormatterCase {
+    /// The `unit` argument of a `style: unit` template.
+    fileprivate var unit: String? {
+        guard let range = template.range(of: "unit: ") else { return nil }
+        return String(template[range.upperBound...].prefix { $0.isLetter || $0 == "-" })
+    }
+}
+
 /// Where Foundation can't do what `Intl` does. A case that is listed and starts matching fails the run, so the
 /// rules can't go stale.
 private func knownDifference(for scenario: FormatterCase) -> String? {
     let template = scenario.template
+    if template.contains("style: unit"), let unit = scenario.unit, unsupportedUnits.contains(unit) {
+        return "Foundation has no `Unit` that formats like Intl's \(unit)"
+    }
     if template.contains("relativetime") {
         if template.contains("quarter") {
             return "RelativeDateTimeFormatter has no quarter unit; the value is left as written"
@@ -76,12 +92,6 @@ private func knownDifference(for scenario: FormatterCase) -> String? {
         if scenario.variables["n"] == 2.5 {
             return "RelativeDateTimeFormatter takes whole numbers; Intl prints \"in 2.5 days\""
         }
-    }
-    if template.contains("list(type: unit)") {
-        return "ListFormatStyle has no `unit` list type"
-    }
-    if template.contains("timeZoneName") {
-        return "Foundation names UTC \"GMT\" where Intl says \"UTC\" (time zone display names differ)"
     }
     return nil
 }
@@ -100,7 +110,24 @@ struct FormatterConformanceTests {
                 )
             }
         }
-        print("FORMATTERS: \(lines.count) of \(FormatterCase.all.count)\n" + lines.joined(separator: "\n"))
+        var known: [String: Int] = [:]
+        for scenario in FormatterCase.all {
+            if let reason = knownDifference(for: scenario) { known[reason, default: 0] += 1 }
+        }
+        print(
+            "FORMATTERS: \(lines.count) of \(FormatterCase.all.count); known differences: \(known.values.reduce(0, +))\n"
+                + known.sorted { $0.key < $1.key }.map { "KNOWN \($0.value)  \($0.key)" }.joined(separator: "\n") + "\n"
+                + lines.joined(separator: "\n")
+        )
+    }
+
+    /// A listed difference that starts matching must come off the list, or the list rots.
+    @Test func knownDifferencesStillDiffer() {
+        let stale = FormatterCase.all.filter {
+            knownDifference(for: $0) != nil
+                && FormatterCase.normalized($0.run()) == FormatterCase.normalized($0.expected)
+        }
+        #expect(stale.isEmpty, "no longer different: \(stale.prefix(5).map(\.testDescription))")
     }
 
     @Test func fixturesAreLoaded() {
