@@ -12,6 +12,8 @@
 //              dir (key = language or null), resolvedLanguage (options.changeTo changes the language first),
 //              hasLoadedNamespace (key = namespace, options = { lng })
 //
+// Handler options can be given by name: see `__handlers`.
+//
 // Post-processors `uppercase`, `wrap`, `bang`, `keyed`, `noop` and `times` are registered on every instance.
 
 var __suites = [];
@@ -31,6 +33,37 @@ var __processors = {
     times: function (value, key, options) { return new Array(options.times || 1).fill(value).join('-'); }
 };
 
+// Handlers that init and call options name by string (`missingInterpolationHandler: 'bracket'`), because the cases
+// are JSON. ConformanceTests.swift implements the same ones.
+var __handlers = {
+    missingInterpolationHandler: {
+        bracket: function (str, match) { return '[' + match[1].trim() + ']'; },
+        html: function (str, match) { return '<b>' + match[1].trim() + '</b>'; },
+        nothing: function () { return undefined; },
+        placeholder: function (str, match) { return match[0]; },
+        number: function () { return 42; }
+    },
+    returnedObjectHandler: {
+        describe: function (key, value, options) {
+            return 'object:' + key + ':' + Object.keys(value).length + ':' + (options.ns || []).join(',');
+        },
+        passthrough: function (key, value) { return value; },
+        firstOfArray: function (key, value) { return Array.isArray(value) ? value[0] : null; }
+    }
+};
+
+function __withHandlers(options) {
+    if (!options) return options;
+    Object.keys(__handlers).forEach(function (name) {
+        if (typeof options[name] === 'string') {
+            var handler = __handlers[name][options[name]];
+            if (!handler) throw new Error('unknown ' + name + ' ' + options[name]);
+            options[name] = handler;
+        }
+    });
+    return options;
+}
+
 function __clone(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -38,7 +71,7 @@ function __clone(value) {
 function __call(instance, kind, key, options) {
     switch (kind) {
         case 't':
-            return instance.t(key, __clone(options) || {});
+            return instance.t(key, __withHandlers(__clone(options)) || {});
         case 'exists':
             return instance.exists(key, __clone(options) || {});
         case 'getResource':
@@ -98,7 +131,7 @@ function __run() {
             };
             try {
                 var instance = i18next.createInstance();
-                var init = Object.assign({ initAsync: false, debug: false }, __clone(s.init));
+                var init = Object.assign({ initAsync: false, debug: false }, __withHandlers(__clone(s.init)));
                 var calls = [];
                 if (kind === 'missing') {
                     init.missingKeyHandler = function (languages, namespace, missingKey, fallbackValue, isUpdate) {
@@ -112,7 +145,7 @@ function __run() {
                 Object.keys(__processors).forEach(function (name) {
                     instance.use({ type: 'postProcessor', name: name, process: __processors[name] });
                 });
-                var result = kind === 'missing' ? { result: instance.t(key, __clone(options) || {}), calls: calls } : __call(instance, kind, key, options);
+                var result = kind === 'missing' ? { result: instance.t(key, __withHandlers(__clone(options)) || {}), calls: calls } : __call(instance, kind, key, options);
                 record.expected = result === undefined ? null : result;
             } catch (error) {
                 record.error = String(error);

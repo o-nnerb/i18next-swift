@@ -69,6 +69,21 @@ Nest other translations with `$t(key)`, optionally with options:
 { "ref": "See $t(hello) and $t(greeting, {\"name\": \"Ann\"})" }
 ```
 
+### Variables you didn't pass
+
+A variable without a value stays as `{{name}}` (``InterpolationOptions/skipOnVariables``). To decide what goes there,
+give ``I18next/Options/missingInterpolationHandler`` (or ``TranslationOptions/missingInterpolationHandler`` for one
+call). It receives an ``I18next/MissingInterpolation`` and returns the text, which is escaped like any value; `nil`
+means empty.
+
+```swift
+options.missingInterpolationHandler = { missing in "[\(missing.expression)]" }
+// "Hello {{name}}" → "Hello [name]"
+```
+
+``InterpolationOptions/useRawValueToEscape`` limits escaping to string values: an array or object is inserted as its
+text, untouched.
+
 ### Custom formats
 
 `{{value, name(arg: x)}}` calls a formatter you register. It gets the value and a context with the language and every
@@ -92,6 +107,11 @@ structure with every leaf translated. ``TranslationOptions/joinArrays`` makes `t
 i18n.object("steps", .init(variables: ["app": "Mail"]))   // ["Open Mail", "Sign in"]
 i18n.t("steps", .init(variables: ["app": "Mail"], joinArrays: " → "))
 ```
+
+``I18next/Options/returnedObjectHandler`` takes over when `t` reaches an object or array and `returnObjects` is off:
+it gets the key, the value and the call's options, and whatever it returns is the result. By default `null` in the
+resources counts as missing; ``I18next/Options/returnNull`` keeps it (`t` then gives an empty string and
+``I18next/object(_:_:)`` gives `null`).
 
 ## Post-processing
 

@@ -66,6 +66,13 @@ extension I18next {
         if found?.isTruthy != true, opt.hasDefaultValue { holder = defaultValue.map(JSONValue.string) }
         let isObjectHit = holder?.isContainer == true && !(joinArrays != nil && holder?.isArray == true)
 
+        if isObjectHit, !returnObjects, let handler = options.returnedObjectHandler, let holder {
+            var handled = opt
+            handled.ns = namespaces
+            let usedKey = resolved.usedKey.isEmpty ? key : resolved.usedKey
+            return (handler(usedKey, holder, handled), resolved)
+        }
+
         if isObjectHit, returnObjects, let holder {
             guard let separator else { return (holder, resolved) }
             let prefixKey = holder.isArray ? (resolved.exactUsedKey ?? key) : (resolved.usedKey)
@@ -111,6 +118,7 @@ extension I18next {
         resolved.value = found
 
         // A key that was not found (or whose text differs from the default given) is reported before interpolation.
+        let noValueFallback = (opt.missingKeyNoValueFallbackToKey ?? false) || options.missingKeyNoValueFallbackToKey
         let updateMissing = opt.hasDefaultValue && defaultValue != text && options.updateMissing
         if !isObjectHit, usedKey || usedDefault || updateMissing {
             reportMissing(
@@ -119,6 +127,7 @@ extension I18next {
                 opt: opt,
                 lng: lng,
                 text: text,
+                valueForMissing: noValueFallback && usedKey ? nil : text,
                 defaultValue: defaultValue,
                 isUpdate: updateMissing
             )
@@ -146,6 +155,7 @@ extension I18next {
         opt: TranslationOptions,
         lng: String?,
         text: String,
+        valueForMissing: String?,
         defaultValue: String?,
         isUpdate: Bool
     ) {
@@ -161,7 +171,7 @@ extension I18next {
         }
 
         func send(_ targets: [String], _ missingKey: String, _ specific: String?) {
-            let fallbackValue = (opt.hasDefaultValue && specific != text) ? specific : text
+            let fallbackValue = (opt.hasDefaultValue && specific != text) ? specific : valueForMissing
             let missing = MissingKey(
                 languages: targets,
                 namespace: namespace,
@@ -230,7 +240,8 @@ extension I18next {
 
     func isValidLookup(_ value: JSONValue?) -> Bool {
         switch value {
-        case nil, .null?: return false
+        case nil: return false
+        case .null?: return options.returnNull
         case .string("")?: return options.returnEmptyString
         default: return true
         }
@@ -388,10 +399,23 @@ extension I18next {
     func makeInterpolator(for opt: TranslationOptions) -> Interpolator {
         var interpolation = options.interpolation
         if let escape = opt.escapeValue { interpolation.escapeValue = escape }
+        var onMissing: (@Sendable (String, String, String) -> String?)?
+        if let handler = opt.missingInterpolationHandler ?? options.missingInterpolationHandler {
+            onMissing = { @Sendable text, placeholder, expression in
+                let missing = MissingInterpolation(
+                    text: text,
+                    placeholder: placeholder,
+                    expression: expression,
+                    options: opt
+                )
+                return handler(missing)
+            }
+        }
         return Interpolator(
             options: interpolation,
             keySeparator: options.keySeparator,
-            ignoreJSONStructure: true
+            ignoreJSONStructure: true,
+            onMissing: onMissing
         )
     }
 

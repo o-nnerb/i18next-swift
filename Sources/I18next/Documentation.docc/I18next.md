@@ -93,5 +93,8 @@ Translating is synchronous; only loading resources from a ``Backend`` is asynchr
 - ``InterpolationOptions``
 - ``I18next/Format``
 - ``I18next/FormatContext``
+- ``I18next/MissingInterpolation``
+- ``I18next/MissingInterpolationHandler``
+- ``I18next/ReturnedObjectHandler``
 - ``I18next/PostProcessor``
 - ``I18next/PostProcessContext``

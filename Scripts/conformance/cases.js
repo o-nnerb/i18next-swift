@@ -953,3 +953,96 @@ suite('hasLoadedNamespace', __fixedSource, { lng: 'en', fallbackLng: 'en', resou
 suite('hasLoadedNamespace[cimode]', __fixedSource, { lng: 'cimode', resources: __fixedResources }, [['unknown', {}]], { kind: 'hasLoadedNamespace' });
 suite('hasLoadedNamespace[no language]', __fixedSource, { resources: __fixedResources }, [['translation', {}]], { kind: 'hasLoadedNamespace' });
 suite('hasLoadedNamespace[no resources]', __fixedSource, { lng: 'en' }, [['translation', {}]], { kind: 'hasLoadedNamespace' });
+
+// MARK: second batch of options: missingInterpolationHandler, useRawValueToEscape, returnNull, returnedObjectHandler,
+// missingKeyNoValueFallbackToKey (written for this port; handlers are named in harness.js)
+
+var __secondResources = {
+    en: {
+        translation: {
+            a: 'hello {{name}}', b: '{{- name}} and {{other}}', c: '{{name}}', fmt: 'n={{n, number}}', raw: 'v={{v}}',
+            nested: 'see $t(a)', plain: 'plain', nul: null, empty: '', arr: ['one {{name}}', 'two'],
+            obj: { x: 'ex', y: { z: 'zed' } }, single: { only: 'one' }
+        }
+    },
+    de: { translation: { nul: 'de-value', a: 'hallo {{name}}' } }
+};
+var __secondSource = 'i18next.options.test.js (cases written for this port)';
+
+['bracket', 'html', 'nothing', 'placeholder', 'number'].forEach(function (handler) {
+    suite('missingInterpolationHandler/' + handler, __secondSource, {
+        lng: 'en', resources: __secondResources, missingInterpolationHandler: handler
+    }, [
+        ['a'], ['a', { name: 'x' }], ['b'], ['b', { other: 'o' }], ['b', { name: 'n' }], ['c', { name: '<i>' }],
+        ['fmt'], ['raw'], ['nested'], ['zzz', { defaultValue: 'dv {{q}}' }], ['a', { interpolation: { escapeValue: false } }],
+        ['plain']
+    ]);
+});
+
+suite('missingInterpolationHandler/skipOnVariables=false', __secondSource, {
+    lng: 'en', resources: __secondResources, missingInterpolationHandler: 'bracket', interpolation: { skipOnVariables: false }
+}, [['a'], ['b'], ['a', { name: 'x' }], ['nested']]);
+
+suite('missingInterpolationHandler/call', __secondSource, { lng: 'en', resources: __secondResources }, [
+    ['a'], ['a', { missingInterpolationHandler: 'bracket' }], ['b', { missingInterpolationHandler: 'html' }],
+    ['a', { missingInterpolationHandler: 'nothing', name: 'x' }], ['nested', { missingInterpolationHandler: 'bracket' }]
+]);
+
+suite('missingInterpolationHandler/call overrides init', __secondSource, {
+    lng: 'en', resources: __secondResources, missingInterpolationHandler: 'bracket'
+}, [['a'], ['a', { missingInterpolationHandler: 'html' }], ['a', { missingInterpolationHandler: 'nothing' }]]);
+
+var __rawCases = [
+    ['c', { name: ['<a>', '&'] }], ['c', { name: { k: '<' } }], ['c', { name: 5 }], ['c', { name: true }],
+    ['c', { name: null }], ['c', { name: '<b>' }], ['c', { name: '<b>', interpolation: { escapeValue: false } }],
+    ['c', { name: 1.5e21 }], ['b', { name: ['<x>'], other: ['<y>'] }], ['raw', { v: [1, '<2>', null] }]
+];
+suite('useRawValueToEscape/off', __secondSource, { lng: 'en', resources: __secondResources }, __rawCases);
+suite('useRawValueToEscape/on', __secondSource, {
+    lng: 'en', resources: __secondResources, interpolation: { useRawValueToEscape: true }
+}, __rawCases);
+
+suite('returnNull/off', __secondSource, { lng: 'en', resources: __secondResources }, [
+    ['nul'], ['nul', { defaultValue: 'dv' }], ['nested'], ['nul', { lng: 'de' }]
+]);
+suite('returnNull/off with fallback', __secondSource, { lng: 'en', fallbackLng: 'de', resources: __secondResources }, [
+    ['nul'], ['nul', { defaultValue: 'dv' }]
+]);
+suite('returnNull/on', __secondSource, { lng: 'en', returnNull: true, resources: __secondResources }, [
+    ['nul'], ['nul', { defaultValue: 'dv' }], ['nested'], ['plain'], ['nul', { lng: 'de' }]
+]);
+suite('returnNull/on with fallback', __secondSource, {
+    lng: 'en', fallbackLng: 'de', returnNull: true, resources: __secondResources
+}, [['nul'], ['nul', { defaultValue: 'dv' }], ['plain'], ['empty']]);
+suite('returnNull/on exists', __secondSource, { lng: 'en', returnNull: true, resources: __secondResources }, [
+    ['nul'], ['plain'], ['zzz'], ['empty']
+], { kind: 'exists' });
+suite('returnNull/off exists', __secondSource, { lng: 'en', resources: __secondResources }, [
+    ['nul'], ['plain'], ['zzz'], ['empty']
+], { kind: 'exists' });
+
+['describe', 'passthrough', 'firstOfArray'].forEach(function (handler) {
+    suite('returnedObjectHandler/' + handler, __secondSource, {
+        lng: 'en', resources: __secondResources, returnedObjectHandler: handler
+    }, [
+        ['obj'], ['obj.y'], ['arr', { name: 'N' }], ['plain'], ['missing'], ['single'], ['obj', { ns: 'translation' }],
+        ['obj', { returnObjects: true }], ['arr', { joinArrays: '-', name: 'N' }], ['translation:obj'], ['nul']
+    ]);
+});
+suite('returnedObjectHandler/with instance returnObjects', __secondSource, {
+    lng: 'en', returnObjects: true, resources: __secondResources, returnedObjectHandler: 'describe'
+}, [['obj'], ['arr', { name: 'N' }]]);
+
+var __noValueResources = { en: { translation: { plain: 'plain', item_one: '{{count}} item', item_other: '{{count}} items' } } };
+suite('missingKeyNoValueFallbackToKey/off', __secondSource, {
+    lng: 'en', fallbackLng: 'en', saveMissing: true, resources: __noValueResources
+}, [['nokey'], ['nokey', { defaultValue: 'dv' }], ['plain'], ['ns:nokey'], ['nokey', { count: 2 }]], { kind: 'missing' });
+suite('missingKeyNoValueFallbackToKey/on', __secondSource, {
+    lng: 'en', fallbackLng: 'en', saveMissing: true, missingKeyNoValueFallbackToKey: true, resources: __noValueResources
+}, [
+    ['nokey'], ['nokey', { defaultValue: 'dv' }], ['plain'], ['ns:nokey'], ['nokey', { count: 2 }],
+    ['nokey', { missingKeyNoValueFallbackToKey: false }], ['item', { count: 1, defaultValue: 'dv' }]
+], { kind: 'missing' });
+suite('missingKeyNoValueFallbackToKey/call', __secondSource, {
+    lng: 'en', fallbackLng: 'en', saveMissing: true, resources: __noValueResources
+}, [['nokey', { missingKeyNoValueFallbackToKey: true }], ['nokey', { missingKeyNoValueFallbackToKey: false }]], { kind: 'missing' });

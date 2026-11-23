@@ -35,6 +35,26 @@ public final class I18next: Sendable {
     /// Transforms a finished translation. Returning `nil` keeps the text as it was, as in i18next.
     public typealias PostProcessor = @Sendable (_ value: String, _ context: PostProcessContext) -> String?
 
+    /// A `{{variable}}` that `t` was not given a value for.
+    public struct MissingInterpolation: Sendable {
+        /// The text being interpolated (earlier placeholders may already be replaced).
+        public let text: String
+        /// The whole placeholder, e.g. `{{name}}`.
+        public let placeholder: String
+        /// What is inside it, e.g. `name` or `name, number`.
+        public let expression: String
+        public let options: TranslationOptions
+    }
+
+    /// Supplies the text for a variable that wasn't provided; `nil` means an empty string. The text is escaped
+    /// like any other value.
+    public typealias MissingInterpolationHandler = @Sendable (MissingInterpolation) -> String?
+
+    /// Called instead of returning the key when `t` hits an object or array and `returnObjects` is off. Gets the key
+    /// that matched, the object and the call's options (with `ns` set to the namespaces searched).
+    public typealias ReturnedObjectHandler =
+        @Sendable (_ key: String, _ value: JSONValue, _ options: TranslationOptions) -> JSONValue
+
     public struct Options: Sendable {
         public var lng: String?
         public var fallbackLng: FallbackLanguages = .none
@@ -88,6 +108,16 @@ public final class I18next: Sendable {
         public var pluralSeparator = "_"
         /// When false (i18next's default), an empty string value is treated as missing.
         public var returnEmptyString = false
+        /// When true, a `null` value in the resources is a valid translation (and `t` returns an empty string for
+        /// it, ``I18next/object(_:_:)`` returns `null`). By default `null` counts as missing.
+        public var returnNull = false
+        /// See ``I18next/ReturnedObjectHandler``.
+        public var returnedObjectHandler: ReturnedObjectHandler?
+        /// Used for every variable that isn't provided, unless the call sets its own.
+        public var missingInterpolationHandler: MissingInterpolationHandler?
+        /// With `saveMissing`, a key that has no `defaultValue` is reported without a value, instead of with the key as
+        /// its value.
+        public var missingKeyNoValueFallbackToKey = false
         /// Objects and arrays are returned by ``I18next/object(_:_:)`` regardless; this also lets `t` stringify them.
         public var returnObjects = false
         /// Joins array resources into a string with this separator when set.
@@ -328,7 +358,10 @@ public final class I18next: Sendable {
     public func exists(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> Bool {
         let resolved = resolve([key], options)
         guard let value = resolved.value else { return false }
-        return value != .null || isValidLookup(value)
+        // Like i18next, anything that was found counts, `null` and `""` included; an object only when objects may be
+        // returned.
+        if options.returnObjects == false, value.isContainer { return false }
+        return true
     }
 
     /// A translate function bound to a language (or a list of them), to namespaces and to a key prefix. What a call

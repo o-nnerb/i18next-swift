@@ -19,6 +19,9 @@ public struct InterpolationOptions: Sendable {
     public var skipOnVariables = true
     /// Variables available to every translation; the ones passed to `t` win.
     public var defaultVariables: [String: JSONValue] = [:]
+    /// Escapes only values that are strings. A number, boolean, array or object is inserted as its text without
+    /// HTML-escaping (i18next's `useRawValueToEscape`).
+    public var useRawValueToEscape = false
 
     public init() {}
 }
@@ -30,11 +33,19 @@ struct Interpolator: Sendable {
     let options: InterpolationOptions
     let keySeparator: String?
     let ignoreJSONStructure: Bool
+    /// Asked for the text of a variable that wasn't provided: the text being interpolated, the whole `{{...}}` and what
+    /// is inside it. nil leaves the choice to `skipOnVariables`.
+    let onMissing: (@Sendable (_ text: String, _ placeholder: String, _ expression: String) -> String?)?
 
     private let unescapePrefix: String
     private let unescapeSuffix: String
 
-    init(options: InterpolationOptions, keySeparator: String?, ignoreJSONStructure: Bool = true) {
+    init(
+        options: InterpolationOptions,
+        keySeparator: String?,
+        ignoreJSONStructure: Bool = true,
+        onMissing: (@Sendable (_ text: String, _ placeholder: String, _ expression: String) -> String?)? = nil
+    ) {
         var normalized = options
         if normalized.prefix.isEmpty { normalized.prefix = "{{" }
         if normalized.suffix.isEmpty { normalized.suffix = "}}" }
@@ -46,6 +57,7 @@ struct Interpolator: Sendable {
         self.options = normalized
         self.keySeparator = keySeparator
         self.ignoreJSONStructure = ignoreJSONStructure
+        self.onMissing = onMissing
 
         let prefix =
             options.unescapeSuffix.isEmpty ? (options.unescapePrefix.isEmpty ? "-" : options.unescapePrefix) : ""
@@ -89,9 +101,17 @@ struct Interpolator: Sendable {
             }
 
             let whole = rest[open.lowerBound..<close.upperBound]
+            let snapshot = onMissing == nil ? "" : output + rest[open.lowerBound...]
             rest = rest[close.upperBound...]
 
-            if let replacement = replacement(for: String(expression), data: data, escape: escape, format: format) {
+            if let replacement = replacement(
+                for: String(expression),
+                whole: String(whole),
+                text: snapshot,
+                data: data,
+                escape: escape,
+                format: format
+            ) {
                 output += replacement
                 replacements += 1
             } else {
@@ -105,6 +125,8 @@ struct Interpolator: Sendable {
     /// nil leaves the `{{…}}` text as it is.
     private func replacement(
         for expression: String,
+        whole: String,
+        text source: String,
         data: [String: JSONValue],
         escape: Bool,
         format: Format
@@ -120,6 +142,7 @@ struct Interpolator: Sendable {
             name = String(name.dropFirst(unescapePrefix.count))
             unescaped = true
         }
+        let innerExpression = name
         name = Self.trimmed(name)
 
         var value: JSONValue?
@@ -142,14 +165,18 @@ struct Interpolator: Sendable {
         }
 
         let text: String
+        var isRaw = false
         if let value {
             text = value.interpolationString
+            if case .string = value {} else { isRaw = options.useRawValueToEscape }
+        } else if let onMissing {
+            text = onMissing(source, whole, innerExpression) ?? ""
         } else if options.skipOnVariables {
             return nil
         } else {
             text = ""
         }
-        return escape && !unescaped ? Self.escapeHTML(text) : text
+        return escape && !unescaped && !isRaw ? Self.escapeHTML(text) : text
     }
 
     /// i18next's `deepFindWithDefaults`: the nested path first, then keys that contain the separator.

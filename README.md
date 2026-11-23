@@ -72,7 +72,7 @@ relative times, `unit` lists and number styles, and time zone display names.
 
 ## Conformance
 
-`Tests/I18nextTests/ConformanceFixtures.swift` holds 1,451 scenarios, most taken from the i18next test suite (lookup, plurals,
+`Tests/I18nextTests/ConformanceFixtures.swift` holds 1,615 scenarios, most taken from the i18next test suite (lookup, plurals,
 context, namespaces, separators, interpolation, nesting, language hierarchy, store lookup, post-processors), each with the answer
 **i18next 27.2.2 itself gives**. `Scripts/conformance/generate.swift` computes them by running the real i18next inside
 JavaScriptCore, so no Node is needed (macOS only):
@@ -102,10 +102,11 @@ Implemented: resource store, language hierarchy (`load`, `supportedLngs`, script
 CLDR 49 plurals (cardinal for 227 locales, ordinal for 110, generated), context, namespaces, interpolation with
 escaping, nesting, `returnObjects`, `joinArrays`, `returnDetails`, custom formats, `postProcess`, `getFixedT` (with
 `keyPrefix`), `resolvedLanguage`, `dir`, `hasLoadedNamespace`, async backends, language detection, events,
-`saveMissing` with `missingKeyHandler` / backend `create`, and conformance with i18next 27.2.2 (1,451 scenarios).
+`saveMissing` with `missingKeyHandler` / backend `create`, `missingInterpolationHandler`, `returnNull`,
+`returnedObjectHandler`, `missingKeyNoValueFallbackToKey`, `useRawValueToEscape`, and conformance with i18next 27.2.2 (1,615 scenarios).
 
 Also: the `I18nextFormatters` product (`number`, `currency`, `datetime`, `relativetime`, `list`).
 
-Not yet: `i18nFormat`, `overloadTranslationOptionHandler`, `missingInterpolationHandler`,
-`missingKeyNoValueFallbackToKey`, `returnedObjectHandler`, `cloneInstance`, `hydrate`, and ICU-driven BCP 47 aliases
-beyond a small table (`sgn-BE-FR` → `sfb`).
+Not yet: `i18nFormat`, `overloadTranslationOptionHandler`, `cloneInstance`, `hydrate`, `getDataByLanguage`, and
+ICU-driven BCP 47 aliases beyond a small table (`sgn-BE-FR` → `sfb`). `alwaysFormat` has no equivalent: i18next's own
+formatter returns the value untouched when no format is named.

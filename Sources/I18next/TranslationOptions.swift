@@ -37,6 +37,10 @@ public struct TranslationOptions: Sendable {
     /// Prefixes the key (`prefix.key`) in a function from ``I18next/getFixedT(lng:ns:keyPrefix:lngs:)``, replacing the
     /// one it was created with; `""` switches it off for the call. `I18next.t` itself ignores it, as in i18next.
     public var keyPrefix: String?
+    /// Overrides ``I18next/Options/missingInterpolationHandler`` for this call.
+    public var missingInterpolationHandler: I18next.MissingInterpolationHandler?
+    /// Turns on ``I18next/Options/missingKeyNoValueFallbackToKey`` for this call; `false` doesn't turn it off.
+    public var missingKeyNoValueFallbackToKey: Bool?
 
     var nestingDepth = 0
     /// Cleared for nested `$t(...)` translations: the text they are part of is post-processed once, as a whole.
@@ -66,7 +70,9 @@ public struct TranslationOptions: Sendable {
         returnObjects: Bool? = nil,
         joinArrays: String? = nil,
         postProcess: [String]? = nil,
-        keyPrefix: String? = nil
+        keyPrefix: String? = nil,
+        missingInterpolationHandler: I18next.MissingInterpolationHandler? = nil,
+        missingKeyNoValueFallbackToKey: Bool? = nil
     ) {
         self.lng = lng
         self.lngs = lngs
@@ -88,6 +94,8 @@ public struct TranslationOptions: Sendable {
         self.joinArrays = joinArrays
         self.postProcess = postProcess
         self.keyPrefix = keyPrefix
+        self.missingInterpolationHandler = missingInterpolationHandler
+        self.missingKeyNoValueFallbackToKey = missingKeyNoValueFallbackToKey
     }
 
     var hasDefaultValue: Bool {

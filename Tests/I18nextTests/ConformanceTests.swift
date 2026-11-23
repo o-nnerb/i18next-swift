@@ -136,7 +136,11 @@ enum ConformanceRunner {
                     "usedNS": details.usedNS.map(JSONValue.string) ?? .null, "usedParams": .object(details.usedParams),
                 ])
             }
-            let initReturnsObjects = scenario.initOptions["returnObjects"] == .bool(true)
+            // `t` is text here; these settings make i18next return something else (an object, or null).
+            let initReturnsObjects =
+                scenario.initOptions["returnObjects"] == .bool(true)
+                || scenario.initOptions["returnNull"] == .bool(true)
+                || scenario.initOptions["returnedObjectHandler"] != nil
             if options.returnObjects == true || initReturnsObjects {
                 return i18n.translateValue(keys, options)
             }
@@ -293,6 +297,14 @@ enum ConformanceRunner {
                 if case .bool(let flag) = value { options.returnEmptyString = flag }
             case "returnObjects":
                 if case .bool(let flag) = value { options.returnObjects = flag }
+            case "returnNull":
+                if case .bool(let flag) = value { options.returnNull = flag }
+            case "missingKeyNoValueFallbackToKey":
+                if case .bool(let flag) = value { options.missingKeyNoValueFallbackToKey = flag }
+            case "missingInterpolationHandler":
+                options.missingInterpolationHandler = try missingInterpolationHandler(named: value)
+            case "returnedObjectHandler":
+                options.returnedObjectHandler = try returnedObjectHandler(named: value)
             case "joinArrays":
                 options.joinArrays = value.stringValue
             case "postProcess":
@@ -364,6 +376,7 @@ enum ConformanceRunner {
             case ("unescapeSuffix", .string(let text)): options.unescapeSuffix = text
             case ("maxReplaces", .number(let number)): options.maxReplaces = Int(number)
             case ("skipOnVariables", .bool(let flag)): options.skipOnVariables = flag
+            case ("useRawValueToEscape", .bool(let flag)): options.useRawValueToEscape = flag
             case ("defaultVariables", .object(let variables)): options.defaultVariables = variables
             default: throw Unsupported(reason: "interpolation option `\(name)`")
             }
@@ -406,6 +419,7 @@ enum ConformanceRunner {
         "lng", "lngs", "fallbackLng", "ns", "count", "ordinal", "context", "defaultValue", "replace",
         "interpolation", "keySeparator", "nsSeparator", "returnObjects", "returnDetails", "joinArrays",
         "postProcess", "skipInterpolation", "ignoreJSONStructure", "defaultVariables", "keyPrefix",
+        "missingInterpolationHandler", "missingKeyNoValueFallbackToKey",
     ]
 
     static func translationOptions(_ value: JSONValue) throws -> TranslationOptions {
@@ -435,6 +449,10 @@ enum ConformanceRunner {
                 continue
             case "keyPrefix":
                 options.keyPrefix = setting.stringValue
+            case "missingInterpolationHandler":
+                options.missingInterpolationHandler = try missingInterpolationHandler(named: setting)
+            case "missingKeyNoValueFallbackToKey":
+                if case .bool(let flag) = setting { options.missingKeyNoValueFallbackToKey = flag }
             case "skipInterpolation":
                 if case .bool(let flag) = setting { options.skipInterpolation = flag }
             case "postProcess":
@@ -483,6 +501,43 @@ enum ConformanceRunner {
             }
         }
         return options
+    }
+
+    // MARK: named handlers (the same ones harness.js defines)
+
+    private static func missingInterpolationHandler(
+        named value: JSONValue
+    ) throws -> I18next.MissingInterpolationHandler {
+        switch value.stringValue {
+        case "bracket": return { "[\(Interpolator.trimmed($0.expression))]" }
+        case "html": return { "<b>\(Interpolator.trimmed($0.expression))</b>" }
+        case "nothing", "number": return { _ in nil }
+        case "placeholder": return { $0.placeholder }
+        default: throw Unsupported(reason: "missingInterpolationHandler \(value)")
+        }
+    }
+
+    private static func returnedObjectHandler(named value: JSONValue) throws -> I18next.ReturnedObjectHandler {
+        switch value.stringValue {
+        case "describe":
+            return { key, object, options in
+                let count: Int
+                switch object {
+                case .array(let items): count = items.count
+                case .object(let fields): count = fields.count
+                default: count = 0
+                }
+                return .string("object:\(key):\(count):\((options.ns ?? []).joined(separator: ","))")
+            }
+        case "passthrough":
+            return { _, object, _ in object }
+        case "firstOfArray":
+            return { _, object, _ in
+                if case .array(let items) = object { return items.first ?? .null }
+                return .null
+            }
+        default: throw Unsupported(reason: "returnedObjectHandler \(value)")
+        }
     }
 
     // MARK: helpers

@@ -32,3 +32,8 @@ it resolves from then on, as in i18next.
 - ``I18next/Options/updateMissing`` also reports keys whose text differs from the `defaultValue` you passed.
 - ``I18next/Options/appendNamespaceToMissingKey`` makes a missing key come back as `ns:key`, and
   ``I18next/Options/parseMissingKeyHandler`` lets you decide the text.
+
+A key that has no `defaultValue` is reported with its own name as the value. Set
+``I18next/Options/missingKeyNoValueFallbackToKey`` (or ``TranslationOptions/missingKeyNoValueFallbackToKey`` for one
+call; a call can turn it on but not off, as in i18next) to report it without a value, so a translation tool can tell
+a key that still needs text from one that has it.
