@@ -865,3 +865,91 @@ suite('postProcess/fallback', 'postProcessor.test.js (cases written for this por
     ['a', { postProcess: 'keyed', lng: 'en' }],
     ['b', { name: 'Ann', postProcess: ['wrap', 'bang'] }]
 ]);
+
+// MARK: getFixedT with keyPrefix, resolvedLanguage, dir and hasLoadedNamespace (written for this port)
+
+var __fixedResources = {
+    en: {
+        translation: {
+            title: 'Title', hello: 'Hello', settings: { title: 'Settings', nested: { deep: 'Deep' }, item_one: '{{count}} item', item_other: '{{count}} items' },
+            'a.b': 'flat'
+        },
+        common: { ok: 'OK', settings: { ok: 'Common OK' } }
+    },
+    pt: { translation: { settings: { title: 'Ajustes' } } }
+};
+var __fixedSource = 'i18next.getFixedT.test.js (cases written for this port)';
+
+suite('fixedT/keyPrefix', __fixedSource, { lng: 'en', resources: __fixedResources }, [
+    ['title', { fixed: { keyPrefix: 'settings' } }],
+    ['nested.deep', { fixed: { keyPrefix: 'settings' } }],
+    ['missing', { fixed: { keyPrefix: 'settings' } }],
+    ['item', { fixed: { keyPrefix: 'settings' }, call: { count: 2 } }],
+    ['title', { fixed: { keyPrefix: 'settings' }, call: { keyPrefix: 'settings.nested' } }],
+    ['deep', { fixed: { keyPrefix: 'settings' }, call: { keyPrefix: 'settings.nested' } }],
+    ['title', { fixed: { keyPrefix: 'settings' }, call: { keyPrefix: '' } }],
+    ['hello', { fixed: {}, call: { keyPrefix: 'settings' } }],
+    ['title', { fixed: { keyPrefix: '' } }],
+    [['missing', 'title'], { fixed: { keyPrefix: 'settings' } }],
+    [['title', 'hello'], { fixed: { keyPrefix: 'settings' } }],
+    ['ok', { fixed: { keyPrefix: 'settings', ns: ['common'] } }],
+    ['common:ok', { fixed: { keyPrefix: 'settings' } }],
+    ['title', { fixed: { lng: 'pt', keyPrefix: 'settings' } }],
+    ['title', { fixed: { lng: 'pt', keyPrefix: 'settings' }, call: { lng: 'en' } }],
+    ['title', { fixed: { lngs: ['pt', 'en'], keyPrefix: 'settings' } }],
+    ['hello', { fixed: { lng: 'pt' } }],
+    ['hello', { fixed: { lng: 'pt' }, call: { lng: 'en' } }],
+    ['ok', { fixed: { ns: ['common'] } }],
+    ['ok', { fixed: { ns: ['common'] }, call: { ns: 'translation' } }],
+    ['b', { fixed: { keyPrefix: 'a' } }]
+], { kind: 'fixedT' });
+
+suite('fixedT/keyPrefix[keySeparator]', __fixedSource, {
+    lng: 'en', keySeparator: '>', resources: { en: { translation: { settings: { title: 'Settings' } } } }
+}, [
+    ['title', { fixed: { keyPrefix: 'settings' } }],
+    ['title', { fixed: { keyPrefix: 'settings' }, call: { keySeparator: '.' } }]
+], { kind: 'fixedT' });
+
+suite('fixedT/keyPrefix[no keySeparator]', __fixedSource, {
+    lng: 'en', keySeparator: false, resources: { en: { translation: { 'settings.title': 'Flat', settings: { title: 'Nested' } } } }
+}, [['title', { fixed: { keyPrefix: 'settings' } }]], { kind: 'fixedT' });
+
+suite('resolvedLanguage', __fixedSource, { lng: 'pt-BR', fallbackLng: 'en', resources: __fixedResources }, [
+    [null, {}],
+    [null, { changeTo: 'pt' }],
+    [null, { changeTo: 'en-GB' }],
+    [null, { changeTo: 'de' }],
+    [null, { changeTo: 'cimode' }],
+    [null, { changeTo: 'dev' }]
+], { kind: 'resolvedLanguage' });
+
+suite('resolvedLanguage[no fallback]', __fixedSource, { lng: 'de', resources: __fixedResources }, [
+    [null, {}], [null, { changeTo: 'pt-BR' }], [null, { changeTo: 'en' }]
+], { kind: 'resolvedLanguage' });
+
+suite('resolvedLanguage[empty bundles]', __fixedSource, {
+    lng: 'pt', fallbackLng: 'en', resources: { pt: { translation: {} }, en: { translation: { a: 'b' } } }
+}, [[null, {}]], { kind: 'resolvedLanguage' });
+
+suite('resolvedLanguage[supportedLngs]', __fixedSource, {
+    lng: 'fr', supportedLngs: ['en'], resources: { fr: { translation: { a: 'b' } }, en: { translation: { a: 'b' } } }
+}, [[null, {}], [null, { changeTo: 'en-US' }]], { kind: 'resolvedLanguage' });
+
+suite('dir', __fixedSource, { lng: 'en', resources: __fixedResources }, [
+    ['en', {}], ['ar', {}], ['he', {}], ['fa', {}], ['ur', {}], ['ps', {}], ['ckb', {}], ['yi', {}], ['dv', {}],
+    ['ar-EG', {}], ['ar-SA', {}], ['he-IL', {}], ['fa-IR', {}], ['pt-BR', {}], ['en-US', {}], ['zh-Hans', {}],
+    ['ar-Latn', {}], ['az-Arab', {}], ['az-Latn', {}], ['ku-Arab', {}], ['pa-Arab', {}], ['sd-Arab', {}], ['uz-Arab', {}],
+    ['AR', {}], ['Ar-eg', {}], ['xx', {}], ['', {}], [null, {}]
+], { kind: 'dir' });
+
+suite('dir[active language]', __fixedSource, { lng: 'ar', resources: { ar: { translation: { a: 'b' } } } }, [[null, {}], ['en', {}]], { kind: 'dir' });
+suite('dir[no language]', __fixedSource, { resources: __fixedResources }, [[null, {}]], { kind: 'dir' });
+
+suite('hasLoadedNamespace', __fixedSource, { lng: 'en', fallbackLng: 'en', resources: __fixedResources }, [
+    ['translation', {}], ['common', {}], ['unknown', {}], ['common', { lng: 'pt' }], ['unknown', { lng: 'de' }]
+], { kind: 'hasLoadedNamespace' });
+
+suite('hasLoadedNamespace[cimode]', __fixedSource, { lng: 'cimode', resources: __fixedResources }, [['unknown', {}]], { kind: 'hasLoadedNamespace' });
+suite('hasLoadedNamespace[no language]', __fixedSource, { resources: __fixedResources }, [['translation', {}]], { kind: 'hasLoadedNamespace' });
+suite('hasLoadedNamespace[no resources]', __fixedSource, { lng: 'en' }, [['translation', {}]], { kind: 'hasLoadedNamespace' });

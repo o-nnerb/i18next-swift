@@ -9,6 +9,8 @@ extension I18next {
     public func initialize() async -> LoadReport {
         if language == nil { await detectLanguage() }
         let report = await load(languages: languagesToLoad(for: language), namespaces: namespacesToLoad())
+        state.withLock { $0.isInitialized = true }
+        refreshResolvedLanguage()
         hub.emit(.initialized)
         return report
     }
@@ -23,6 +25,7 @@ extension I18next {
             guard state.language == nil else { return }
             state.language = chosen
         }
+        refreshResolvedLanguage()
         await detector.cacheUserLanguage(chosen)
     }
 
@@ -51,7 +54,10 @@ extension I18next {
             state.language = formatted
             return true
         }
-        if applied { hub.emit(.languageChanged(formatted)) }
+        if applied {
+            refreshResolvedLanguage()
+            hub.emit(.languageChanged(formatted))
+        }
         return report
     }
 

@@ -7,7 +7,10 @@
 //     init     i18next init options (JSON only: no functions)
 //     tests    [[key, options?], ...]
 //     options  { kind }, one of: t (default), exists, getResource, resolveHierarchy, formatCode, languagePart, pluralSuffix,
-//              bestMatch, missing (runs `t` and also records every call the `missingKeyHandler` receives)
+//              bestMatch, missing (runs `t` and also records every call the `missingKeyHandler` receives),
+//              fixedT (options = { fixed: { lng | lngs, ns, keyPrefix }, call: {...} }),
+//              dir (key = language or null), resolvedLanguage (options.changeTo changes the language first),
+//              hasLoadedNamespace (key = namespace, options = { lng })
 //
 // Post-processors `uppercase`, `wrap`, `bang`, `keyed`, `noop` and `times` are registered on every instance.
 
@@ -51,6 +54,24 @@ function __call(instance, kind, key, options) {
         case 'bestMatch':
             // key = array of candidate codes
             return instance.services.languageUtils.getBestMatchFromCodes(key);
+        case 'fixedT':
+            var fixed = (options || {}).fixed || {};
+            return instance.getFixedT(fixed.lngs || fixed.lng, fixed.ns, fixed.keyPrefix)(key, __clone((options || {}).call) || {});
+        case 'dir':
+            // i18next asks `Intl.Locale` first, and the answer then depends on the runtime. Hide it so that what is
+            // recorded is i18next's own list of right-to-left languages, which is what this port implements.
+            var textInfo = Intl.Locale.prototype.getTextInfo;
+            Intl.Locale.prototype.getTextInfo = undefined;
+            try {
+                return instance.dir(key === null ? undefined : key);
+            } finally {
+                Intl.Locale.prototype.getTextInfo = textInfo;
+            }
+        case 'resolvedLanguage':
+            if ((options || {}).changeTo !== undefined) instance.changeLanguage(options.changeTo);
+            return instance.resolvedLanguage === undefined ? null : instance.resolvedLanguage;
+        case 'hasLoadedNamespace':
+            return instance.hasLoadedNamespace(key, __clone(options) || {});
         case 'pluralSuffix':
             // key = language, options = { count, ordinal }
             return instance.services.pluralResolver.getSuffix(key, (options || {}).count, __clone(options) || {});

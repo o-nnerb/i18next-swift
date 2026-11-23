@@ -58,6 +58,7 @@ Translating is synchronous; only loading resources from a ``Backend`` is asynchr
 - ``LanguageUtils``
 - ``LanguageDetector``
 - ``SystemLanguageDetector``
+- ``LanguageDirection``
 - ``SeparatorSetting``
 - ``TranslationDetails``
 

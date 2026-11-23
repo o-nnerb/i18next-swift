@@ -34,6 +34,9 @@ public struct TranslationOptions: Sendable {
     public var joinArrays: String?
     /// Post-processors for this call, replacing ``I18next/Options/postProcess``. `[]` applies none.
     public var postProcess: [String]?
+    /// Prefixes the key (`prefix.key`) in a function from ``I18next/getFixedT(lng:ns:keyPrefix:lngs:)``, replacing the
+    /// one it was created with; `""` switches it off for the call. `I18next.t` itself ignores it, as in i18next.
+    public var keyPrefix: String?
 
     var nestingDepth = 0
     /// Cleared for nested `$t(...)` translations: the text they are part of is post-processed once, as a whole.
@@ -62,7 +65,8 @@ public struct TranslationOptions: Sendable {
         ignoreJSONStructure: Bool? = nil,
         returnObjects: Bool? = nil,
         joinArrays: String? = nil,
-        postProcess: [String]? = nil
+        postProcess: [String]? = nil,
+        keyPrefix: String? = nil
     ) {
         self.lng = lng
         self.lngs = lngs
@@ -83,6 +87,7 @@ public struct TranslationOptions: Sendable {
         self.returnObjects = returnObjects
         self.joinArrays = joinArrays
         self.postProcess = postProcess
+        self.keyPrefix = keyPrefix
     }
 
     var hasDefaultValue: Bool {

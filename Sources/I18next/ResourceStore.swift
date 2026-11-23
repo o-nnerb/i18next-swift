@@ -97,6 +97,21 @@ public final class ResourceStore: Sendable {
         getResourceBundle(lng: lng, ns: ns) != nil
     }
 
+    /// Whether `lng` has at least one non-empty bundle.
+    public func hasLanguageSomeTranslations(lng: String) -> Bool {
+        storage.withLock { data in
+            data[lng]?.values.contains { bundle in
+                switch bundle {
+                case .object(let fields): !fields.isEmpty
+                case .array(let items): !items.isEmpty
+                case .null, .bool(false), .string(""): false
+                case .number(let number): number != 0 && !number.isNaN
+                default: true
+                }
+            } ?? false
+        }
+    }
+
     public var languages: [String] {
         storage.withLock { Array($0.keys).sorted() }
     }

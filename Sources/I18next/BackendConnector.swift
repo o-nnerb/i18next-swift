@@ -75,6 +75,12 @@ final class BackendConnector: Sendable {
         return report
     }
 
+    /// A load for `key` has finished, successfully or not, and none is running.
+    func isSettled(_ key: ResourceKey) -> Bool {
+        let (running, failed) = state.withLock { ($0.inflight[key] != nil, $0.failed.contains(key)) }
+        return !running && (failed || store.hasResourceBundle(lng: key.language, ns: key.namespace))
+    }
+
     /// Asks the backend to create a key `t` could not find. Fire and forget, as in i18next.
     func create(_ missing: MissingKey) {
         let backend = backend

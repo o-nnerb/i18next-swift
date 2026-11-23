@@ -115,6 +115,37 @@ are in ``TranslationOptions/variables``) and where the text was found. A text wi
 whole, and an object returned by ``I18next/object(_:_:)`` is processed leaf by leaf. Unlike i18next, `usedKey`, `usedLng`
 and `usedNS` are always provided, so there is no `postProcessPassResolved` switch.
 
+## Scoping a translate function
+
+``I18next/getFixedT(lng:ns:keyPrefix:lngs:)`` binds a language, namespaces and a key prefix, so a screen can write
+short keys. A call can still override each of them; `keyPrefix: ""` switches the prefix off for one call.
+
+```swift
+// "settings": { "title": "Settings", "language": "Language" }
+let t = i18n.getFixedT(keyPrefix: "settings")
+t("title")                          // "Settings"
+t(["missing", "language"])          // "Language"
+```
+
+## Language and direction
+
+``I18next/resolvedLanguage`` is the first language in the hierarchy that has translations, which is the one to mark in a
+language picker: with `pt-BR` active and only `pt` loaded it is `pt`. ``I18next/dir(_:)`` tells whether to lay out right
+to left:
+
+```swift
+i18n.dir("ar-EG")   // .rtl
+i18n.dir()          // the resolved language's direction
+```
+
+## Namespaces
+
+``I18next/setDefaultNamespace(_:)-(String)`` changes the namespaces `t` searches without a `ns:` prefix.
+``I18next/hasLoadedNamespace(_:lng:)`` says whether a namespace is ready: always for an instance without a backend,
+and for one with a backend once ``I18next/initialize()`` has run and the namespace's load has finished, successfully or
+not. A namespace that was never requested is not ready. `saveMissing` skips keys of namespaces that aren't ready,
+since they may exist.
+
 ## Changing the language
 
 ``I18next/setLanguage(_:)`` switches immediately. When resources come from a backend, use

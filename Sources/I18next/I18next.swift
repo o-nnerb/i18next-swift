@@ -117,6 +117,11 @@ public final class I18next: Sendable {
         var namespaces: [String]
         var formats: [String: Format] = [:]
         var postProcessors: [String: PostProcessor] = [:]
+        var defaultNS: [String]
+        /// The first language of the hierarchy that has translations (i18next's `resolvedLanguage`).
+        var resolvedLanguage: String?
+        /// False for an instance with a backend until `initialize()` has run.
+        var isInitialized: Bool
         /// Bumped by every language change so an older, slower change can't override a newer one.
         var languageChangeToken = 0
     }
@@ -153,12 +158,17 @@ public final class I18next: Sendable {
 
         var namespaces = options.ns ?? options.defaultNS
         for ns in options.defaultNS where !namespaces.contains(ns) { namespaces.append(ns) }
-        var state = State(language: options.lng.map(languageUtils.format), namespaces: namespaces)
+        let usesBackend = options.backend != nil && (options.resources.isEmpty || options.partialBundledLanguages)
+        var state = State(
+            language: options.lng.map(languageUtils.format),
+            namespaces: namespaces,
+            defaultNS: options.defaultNS,
+            isInitialized: !usesBackend
+        )
         for (name, format) in options.formats { state.formats[Self.formatName(name)] = format }
         state.postProcessors = options.postProcessors
         self.state = Protected(state)
 
-        let usesBackend = options.resources.isEmpty || options.partialBundledLanguages
         self.connector =
             usesBackend
             ? options.backend.map {
@@ -170,6 +180,7 @@ public final class I18next: Sendable {
                 )
             }
             : nil
+        refreshResolvedLanguage()
     }
 
     public convenience init(configure: (inout Options) -> Void) {
@@ -195,6 +206,29 @@ public final class I18next: Sendable {
         languageUtils.hierarchy(for: language)
     }
 
+    /// The first language of the active language's hierarchy that has translations: `pt` while `pt-BR` is active
+    /// but only `pt` is loaded. `nil` for `cimode`, `dev` and when nothing is loaded for any of them.
+    ///
+    /// It is worked out when the language changes and when ``initialize()`` finishes, as in i18next, so resources
+    /// added later don't change it until the next change.
+    public var resolvedLanguage: String? {
+        state.withLock { $0.resolvedLanguage }
+    }
+
+    func refreshResolvedLanguage() {
+        var resolved: String?
+        if let current = language, current != "cimode", current != "dev" {
+            let hierarchy = languageUtils.hierarchy(for: current)
+            resolved = hierarchy.first {
+                $0 != "cimode" && $0 != "dev" && store.hasLanguageSomeTranslations(lng: $0)
+            }
+            if resolved == nil, !hierarchy.contains(current), store.hasLanguageSomeTranslations(lng: current) {
+                resolved = current
+            }
+        }
+        state.withLock { $0.resolvedLanguage = resolved }
+    }
+
     /// Switches the language immediately, without touching the backend. Use ``changeLanguage(_:)``
     /// to load the new language's resources first.
     public func setLanguage(_ lng: String?) {
@@ -203,7 +237,49 @@ public final class I18next: Sendable {
             state.languageChangeToken += 1
             state.language = formatted
         }
+        refreshResolvedLanguage()
         hub.emit(.languageChanged(formatted))
+    }
+
+    // MARK: Namespaces
+
+    /// The namespaces `t` searches when a call names none.
+    public var defaultNamespaces: [String] {
+        state.withLock { $0.defaultNS }
+    }
+
+    /// Replaces the default namespaces (i18next's `setDefaultNamespace`). Nothing is loaded.
+    public func setDefaultNamespace(_ namespaces: [String]) {
+        state.withLock { $0.defaultNS = namespaces }
+    }
+
+    public func setDefaultNamespace(_ namespace: String) {
+        setDefaultNamespace([namespace])
+    }
+
+    /// Whether `ns` is ready for `lng` (the resolved or active language by default), as i18next's
+    /// `hasLoadedNamespace`: it is stored, or its load has finished (even unsuccessfully) for `lng` and for the last
+    /// fallback. An instance without a backend, or with bundled resources only, is always ready; one with a backend
+    /// isn't until ``initialize()`` has run, nor for a namespace that was never requested.
+    public func hasLoadedNamespace(_ ns: String, lng: String? = nil) -> Bool {
+        guard state.withLock({ $0.isInitialized }) else { return false }
+        let hierarchy = languages
+        guard language != nil, let first = hierarchy.first, let last = hierarchy.last else { return false }
+
+        let code = lng ?? resolvedLanguage ?? first
+        if code.lowercased() == "cimode" { return true }
+        if hasResourceBundle(lng: code, ns: ns) { return true }
+        guard let connector else { return true }
+
+        let loadLng: String? =
+            lng == nil
+            ? code
+            : (languageUtils.isSupported(code)
+                ? languageUtils.hierarchy(for: code, fallback: FallbackLanguages.none).first : nil)
+        let hasFallback = options.fallbackLng != .none
+        let language = loadLng.map { connector.isSettled(ResourceKey(language: $0, namespace: ns)) } ?? true
+        let fallback = !hasFallback || connector.isSettled(ResourceKey(language: last, namespace: ns))
+        return language && fallback
     }
 
     // MARK: Formats
@@ -255,21 +331,43 @@ public final class I18next: Sendable {
         return value != .null || isValidLookup(value)
     }
 
-    /// A translate function bound to a language and/or namespaces.
-    public func getFixedT(lng: String? = nil, ns: [String]? = nil) -> FixedT {
-        FixedT(i18n: self, lng: lng, ns: ns)
+    /// A translate function bound to a language (or a list of them), to namespaces and to a key prefix. What a call
+    /// passes itself wins; the prefix is joined to the key with the instance's `keySeparator` (`.` when it is off).
+    public func getFixedT(
+        lng: String? = nil,
+        ns: [String]? = nil,
+        keyPrefix: String? = nil,
+        lngs: [String]? = nil
+    ) -> FixedT {
+        FixedT(i18n: self, lng: lng, lngs: lngs, ns: ns, keyPrefix: keyPrefix)
     }
 
     public struct FixedT: Sendable {
         let i18n: I18next
         let lng: String?
+        let lngs: [String]?
         let ns: [String]?
+        let keyPrefix: String?
 
         public func callAsFunction(_ key: String, _ options: TranslationOptions = TranslationOptions()) -> String {
+            callAsFunction([key], options)
+        }
+
+        public func callAsFunction(_ keys: [String], _ options: TranslationOptions = TranslationOptions()) -> String {
             var options = options
             options.lng = options.lng ?? lng
+            options.lngs = options.lngs ?? lngs
             options.ns = options.ns ?? ns
-            return i18n.translate([key], options)
+
+            // `""` on the call switches the prefix off; an empty one anywhere else counts as none.
+            let call = options.keyPrefix
+            let prefix = call == "" ? nil : (call.flatMap { $0.isEmpty ? nil : $0 } ?? keyPrefix)
+            var resolved = keys
+            if let prefix, !prefix.isEmpty {
+                let separator = i18n.options.keySeparator.flatMap { $0.isEmpty ? nil : $0 } ?? "."
+                resolved = keys.map { "\(prefix)\(separator)\($0)" }
+            }
+            return i18n.translate(resolved, options)
         }
     }
 

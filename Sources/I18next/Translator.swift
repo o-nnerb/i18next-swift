@@ -200,8 +200,9 @@ extension I18next {
     }
 
     /// Without a `missingKeyHandler`: lets the backend create the key and keeps it in the store, as i18next does.
+    /// A namespace that hasn't loaded yet is not saved to: the key may exist, so reporting it would be a false alarm.
     func saveMissing(_ missing: MissingKey) {
-        guard !missing.key.isEmpty else { return }
+        guard hasLoadedNamespace(missing.namespace), !missing.key.isEmpty else { return }
         connector?.create(missing)
         if let first = missing.languages.first, let value = missing.fallbackValue {
             store.addResource(lng: first, ns: missing.namespace, key: missing.key, value: .string(value))
@@ -251,7 +252,7 @@ extension I18next {
     func extractFromKey(_ key: String, _ opt: TranslationOptions) -> (key: String, namespaces: [String]) {
         let nsSeparator = nsSeparator(for: opt)
         let keySeparator = keySeparator(for: opt)
-        let namespaces = opt.ns ?? options.defaultNS
+        let namespaces = opt.ns ?? defaultNamespaces
 
         let wouldCheckForNsInKey = nsSeparator.map { !$0.isEmpty && key.indexRange(of: $0) != nil } ?? false
         let seemsNaturalLanguage =
@@ -266,7 +267,7 @@ extension I18next {
 
         var parts = key.splitKeepingEmpty(on: nsSeparator)
         var resultNamespaces = namespaces
-        let configured = options.ns ?? options.defaultNS
+        let configured = options.ns ?? defaultNamespaces
         if nsSeparator != keySeparator || (nsSeparator == keySeparator && configured.contains(parts[0])) {
             resultNamespaces = [parts.removeFirst()]
         }

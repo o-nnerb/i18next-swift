@@ -162,6 +162,39 @@ enum ConformanceRunner {
         case "languagePart":
             guard case .string(let code) = scenario.key else { throw Unsupported(reason: "non-string key") }
             return .string(i18n.languageUtils.languagePart(code))
+        case "fixedT":
+            guard case .object(let fields) = scenario.options else { throw Unsupported(reason: "fixedT arguments") }
+            var lng: String?
+            var lngs: [String]?
+            var ns: [String]?
+            var prefix: String?
+            if case .object(let fixed)? = fields["fixed"] {
+                lng = fixed["lng"]?.stringValue
+                if let list = fixed["lngs"] { lngs = try strings(list) }
+                if let list = fixed["ns"] { ns = try strings(list) }
+                prefix = fixed["keyPrefix"]?.stringValue
+            }
+            var call = TranslationOptions()
+            if let value = fields["call"] { call = try translationOptions(value) }
+            let keys: [String]
+            switch scenario.key {
+            case .string(let key): keys = [key]
+            case .array(let items): keys = try items.map(string)
+            default: throw Unsupported(reason: "non-string key")
+            }
+            return .string(i18n.getFixedT(lng: lng, ns: ns, keyPrefix: prefix, lngs: lngs)(keys, call))
+        case "dir":
+            return .string(i18n.dir(scenario.key.stringValue).rawValue)
+        case "resolvedLanguage":
+            if case .object(let fields) = scenario.options, let change = fields["changeTo"] {
+                i18n.setLanguage(change.stringValue)
+            }
+            return i18n.resolvedLanguage.map(JSONValue.string) ?? .null
+        case "hasLoadedNamespace":
+            guard case .string(let namespace) = scenario.key else { throw Unsupported(reason: "non-string key") }
+            var lng: String?
+            if case .object(let fields) = scenario.options { lng = fields["lng"]?.stringValue }
+            return .bool(i18n.hasLoadedNamespace(namespace, lng: lng))
         case "pluralSuffix":
             guard case .string(let language) = scenario.key, case .object(let fields) = scenario.options,
                 case .number(let count)? = fields["count"]
@@ -372,7 +405,7 @@ enum ConformanceRunner {
     private static let settings: Set<String> = [
         "lng", "lngs", "fallbackLng", "ns", "count", "ordinal", "context", "defaultValue", "replace",
         "interpolation", "keySeparator", "nsSeparator", "returnObjects", "returnDetails", "joinArrays",
-        "postProcess", "skipInterpolation", "ignoreJSONStructure", "defaultVariables",
+        "postProcess", "skipInterpolation", "ignoreJSONStructure", "defaultVariables", "keyPrefix",
     ]
 
     static func translationOptions(_ value: JSONValue) throws -> TranslationOptions {
@@ -400,6 +433,8 @@ enum ConformanceRunner {
                 if case .bool(false) = setting { options.joinArraysDisabled = true }
             case "returnDetails":
                 continue
+            case "keyPrefix":
+                options.keyPrefix = setting.stringValue
             case "skipInterpolation":
                 if case .bool(let flag) = setting { options.skipInterpolation = flag }
             case "postProcess":
