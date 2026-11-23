@@ -27,7 +27,6 @@ enum NumberFormats {
         let style =
             forceCurrency
             ? "currency" : try options.choice("style", ["decimal", "percent", "currency", "unit"]) ?? "decimal"
-        guard style != "unit" else { throw FormatFailure("unit style is not supported") }
 
         var digits = try digitOptions(options, style: style, currency: options.string("currency"))
         let sign = try options.choice("signDisplay", ["auto", "never", "always", "exceptZero", "negative"]) ?? "auto"
@@ -45,6 +44,13 @@ enum NumberFormats {
         }
 
         switch style {
+        case "unit":
+            guard let unit = options.string("unit") else { throw FormatFailure("unit is required") }
+            let display = try options.choice("unitDisplay", ["short", "narrow", "long"]) ?? "short"
+            var format = FloatingPointFormatStyle<Double>(locale: locale)
+            format = format.grouping(grouping ? .automatic : .never).sign(strategy: signStrategy(sign))
+            format = apply(digits, to: format).rounded(rule: .toNearestOrAwayFromZero)
+            return .string(try Units.format(number, unit: unit, display: display, locale: locale, number: format))
         case "percent":
             var format = FloatingPointFormatStyle<Double>.Percent(locale: locale)
             format = format.grouping(grouping ? .automatic : .never).sign(strategy: signStrategy(sign))
