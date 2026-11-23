@@ -16,7 +16,10 @@ enum DateFormats {
         let formatter = DateFormatter()
         formatter.locale = FormatOptions.locale(for: context.language)
         if let zone = options.string("timeZone") {
-            guard let timeZone = TimeZone(identifier: zone) ?? TimeZone(abbreviation: zone) else {
+            // ECMA-402 treats UTC, GMT, Etc/UTC and Etc/GMT as one zone, "UTC"; Foundation's "UTC" and "GMT" are the
+            // Greenwich zone instead, which names itself "GMT" and "Greenwich Mean Time".
+            let canonical = ["utc", "gmt", "etc/utc", "etc/gmt"].contains(zone.lowercased()) ? "Etc/UTC" : zone
+            guard let timeZone = TimeZone(identifier: canonical) ?? TimeZone(abbreviation: zone) else {
                 throw FormatFailure("invalid time zone \(zone)")
             }
             formatter.timeZone = timeZone
@@ -34,7 +37,12 @@ enum DateFormats {
             formatter.dateStyle = dateStyle.map(style) ?? .none
             formatter.timeStyle = timeStyle.map(style) ?? .none
         } else {
-            formatter.setLocalizedDateFormatFromTemplate(template.isEmpty ? "yMd" : template)
+            // `Intl` shows the date when no date or time field is asked for, a zone name being no field.
+            let fields = [
+                "weekday", "year", "month", "day", "dayPeriod", "hour", "minute", "second", "fractionalSecondDigits",
+            ]
+            let needsDate = !fields.contains { options.string($0) != nil }
+            formatter.setLocalizedDateFormatFromTemplate(needsDate ? "yMd" + template : template)
         }
         return .string(formatter.string(from: date))
     }
