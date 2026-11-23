@@ -313,11 +313,17 @@ struct HTTPBackendCreateTests {
         }
     }
 
-    @Test(arguments: [
-        (408, "transient 408"), (425, "transient 425"), (429, "transient 429"), (500, "transient 500"),
-        (503, "transient 503"), (400, "unexpected 400"), (403, "unexpected 403"), (301, "unexpected 301"),
-        (200, "no error"), (204, "no error"),
-    ])
+    // One case at a time, and a limit per case. With all ten at once the Linux runner hung until the job timed out;
+    // the limit turns a hang into a failure that names the status.
+    @Test(
+        .serialized,
+        .timeLimit(.minutes(1)),
+        arguments: [
+            (408, "transient 408"), (425, "transient 425"), (429, "transient 429"), (500, "transient 500"),
+            (503, "transient 503"), (400, "unexpected 400"), (403, "unexpected 403"), (301, "unexpected 301"),
+            (200, "no error"), (204, "no error"),
+        ]
+    )
     func statusesAreMapped(status: Int, expected: String) async throws {
         let result = try await outcome(for: status)
         #expect(result.thrown == expected, "status \(status): \(result.thrown), \(result.summary)")
