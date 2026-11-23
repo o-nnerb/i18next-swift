@@ -23,6 +23,9 @@ let package = Package(
             url: "https://github.com/request-dl/request-dl-nio.git",
             from: "4.5.8"
         ),
+        // Test-only: the loopback HTTP server of `I18nextHTTPTests`. Already in the graph through `request-dl-nio`,
+        // whose lower bound is the same, so this adds no package and no constraint; no product depends on it.
+        .package(url: "https://github.com/apple/swift-nio", from: "2.105.0"),
     ],
     targets: [
         .target(
@@ -67,7 +70,13 @@ let package = Package(
         ),
         .testTarget(
             name: "I18nextHTTPTests",
-            dependencies: ["I18nextHTTP"],
+            dependencies: [
+                "I18nextHTTP",
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+            ],
             swiftSettings: [
                 .defaultIsolation(nil)
             ]

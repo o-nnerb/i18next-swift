@@ -1,142 +1,10 @@
 // Copyright (c) 2026 Brenno Giovanini de Moura
 // SPDX-License-Identifier: MIT
 
-import Foundation
 import I18next
 import Testing
 
 @testable import I18nextHTTP
-
-#if canImport(Darwin)
-import Darwin
-
-/// Minimal HTTP/1.1 server on a loopback socket: one request per connection, scripted responses.
-final class TestServer: @unchecked Sendable {
-    struct Request: Sendable {
-        let method: String
-        let target: String  // path and query as sent
-        let headers: [String: String]  // lower-cased names
-        let body: String
-        var path: String { String(target.prefix { $0 != "?" }) }
-    }
-    struct Response: Sendable {
-        var status = 200
-        var body = "{}"
-    }
-
-    private let lock = NSLock()
-    private var recorded: [Request] = []
-    private let handler: @Sendable (Request, Int) -> Response  // request, 1-based count of requests to that path
-    private var listener: Int32 = -1
-    private var stopped = false
-    private let finished = DispatchSemaphore(value: 0)
-    private(set) var port: UInt16 = 0
-
-    init(handler: @escaping @Sendable (Request, Int) -> Response) throws {
-        self.handler = handler
-
-        listener = socket(AF_INET, SOCK_STREAM, 0)
-        guard listener >= 0 else { throw POSIXError(.EIO) }
-        var address = sockaddr_in()
-        address.sin_family = sa_family_t(AF_INET)
-        address.sin_addr.s_addr = inet_addr("127.0.0.1")
-        address.sin_port = 0
-        let bound = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(listener, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        guard bound == 0, listen(listener, 64) == 0 else { throw POSIXError(.EADDRINUSE) }
-
-        var assigned = sockaddr_in()
-        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-        _ = withUnsafeMutablePointer(to: &assigned) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(listener, $0, &length) }
-        }
-        port = UInt16(bigEndian: assigned.sin_port)
-
-        // The loop polls instead of blocking in `accept`, so `stop` can end it and have the loop (not another thread)
-        // close the listener: a socket closed under a blocked `accept` can keep answering on its port.
-        let fd = listener
-        Thread.detachNewThread { [self] in
-            while !lock.withLock({ stopped }) {
-                var event = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-                guard poll(&event, 1, 20) > 0 else { continue }
-                let client = accept(fd, nil, nil)
-                if client >= 0 { DispatchQueue.global().async { self.serve(client) } }
-            }
-            close(fd)
-            finished.signal()
-        }
-    }
-
-    var baseURL: String { "http://127.0.0.1:\(port)" }
-
-    var requests: [Request] { lock.withLock { recorded } }
-    func count(of path: String) -> Int { requests.filter { $0.path == path }.count }
-
-    /// Returns once nothing listens on the port any more.
-    func stop() {
-        lock.withLock { stopped = true }
-        finished.wait()
-    }
-
-    private func serve(_ client: Int32) {
-        defer { close(client) }
-        var raw = Data()
-        var buffer = [UInt8](repeating: 0, count: 4096)
-        while raw.range(of: Data("\r\n\r\n".utf8)) == nil {
-            let n = read(client, &buffer, buffer.count)
-            if n <= 0 { return }
-            raw.append(contentsOf: buffer[0..<n])
-        }
-
-        let separator = raw.range(of: Data("\r\n\r\n".utf8))!
-        var bodyBytes = Data(raw[separator.upperBound...])
-        let lines = String(decoding: raw[..<separator.lowerBound], as: UTF8.self).components(separatedBy: "\r\n")
-        let startLine = lines[0].split(separator: " ")
-        guard startLine.count >= 2 else { return }
-        var headers: [String: String] = [:]
-        for line in lines.dropFirst() {
-            guard let colon = line.firstIndex(of: ":") else { continue }
-            headers[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmingCharacters(
-                in: .whitespaces
-            )
-        }
-
-        let expected = headers["content-length"].flatMap { Int($0) } ?? 0
-        while bodyBytes.count < expected {
-            let n = read(client, &buffer, buffer.count)
-            if n <= 0 { break }
-            bodyBytes.append(contentsOf: buffer[0..<n])
-        }
-
-        let request = Request(
-            method: String(startLine[0]),
-            target: String(startLine[1]),
-            headers: headers,
-            body: String(decoding: bodyBytes, as: UTF8.self)
-        )
-        let seen = lock.withLock { () -> Int in
-            recorded.append(request)
-            return recorded.filter { $0.path == request.path }.count
-        }
-        let response = handler(request, seen)
-
-        let body = Data(response.body.utf8)
-        let head =
-            "HTTP/1.1 \(response.status) X\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
-        let payload = Data(head.utf8) + body
-        payload.withUnsafeBytes { bytes in
-            var sent = 0
-            while sent < bytes.count {
-                let n = write(client, bytes.baseAddress!.advanced(by: sent), bytes.count - sent)
-                if n <= 0 { return }
-                sent += n
-            }
-        }
-    }
-}
 
 private func ok(_ body: String) -> TestServer.Response { .init(status: 200, body: body) }
 
@@ -157,7 +25,7 @@ private func makeI18n(
     }
 }
 
-@Suite("HTTPBackend over URLSession", .serialized)
+@Suite("HTTPBackend read", .serialized)
 struct HTTPBackendTests {
     @Test func loadsBundlesAndTranslates() async throws {
         let server = try TestServer { request, _ in
@@ -199,7 +67,7 @@ struct HTTPBackendTests {
 
         #expect(report.failures.count == 1)
         #expect(report.failures.first?.error as? BackendError == .notFound(language: "pt", namespace: "translation"))
-        #expect(server.count(of: "/locales/pt/translation.json") == 1)
+        #expect(server.count(of: "/locales/pt/translation.json") == 1, "\(server.summary)")
     }
 
     @Test func serverErrorsAreRetriedUntilSuccess() async throws {
@@ -211,7 +79,7 @@ struct HTTPBackendTests {
         let report = await i18n.initialize()
 
         #expect(report.isComplete)
-        #expect(server.count(of: "/locales/pt/translation.json") == 3)
+        #expect(server.count(of: "/locales/pt/translation.json") == 3, "\(server.summary)")
         #expect(i18n.t("hello") == "Olá")
     }
 
@@ -224,7 +92,7 @@ struct HTTPBackendTests {
 
         let failure = try #require(report.failures.first)
         #expect((failure.error as? HTTPTransientError)?.statusCode == 500)
-        #expect(server.count(of: "/locales/pt/translation.json") == 3)
+        #expect(server.count(of: "/locales/pt/translation.json") == 3, "\(server.summary)")
     }
 
     @Test func otherStatusesAreFinal() async throws {
@@ -237,7 +105,7 @@ struct HTTPBackendTests {
             Issue.record("expected unexpectedStatus(403), got \(String(describing: report.failures.first?.error))")
             return
         }
-        #expect(server.count(of: "/locales/pt/translation.json") == 1)
+        #expect(server.count(of: "/locales/pt/translation.json") == 1, "\(server.summary)")
     }
 
     @Test func invalidJSONIsFinal() async throws {
@@ -250,7 +118,41 @@ struct HTTPBackendTests {
             Issue.record("expected invalidResponse, got \(String(describing: report.failures.first?.error))")
             return
         }
-        #expect(server.count(of: "/locales/pt/translation.json") == 1)
+        #expect(server.count(of: "/locales/pt/translation.json") == 1, "\(server.summary)")
+    }
+
+    /// What `read` throws when the server answers `status`. The status travels in the namespace (`s408`), so the
+    /// answer is the same whichever test server receives the request.
+    private func readOutcome(for status: Int) async throws -> (thrown: String, summary: String) {
+        let server = try TestServer { request, _ in
+            let code = request.path.split(separator: "/").last.flatMap { Int($0.dropFirst()) } ?? 500
+            return .init(status: code, body: code == 200 ? #"{"k":"v"}"# : "")
+        }
+        defer { server.stop() }
+        let backend = try HTTPBackend(baseURL: server.baseURL, loadPath: "{{ns}}", timeoutSeconds: 5)
+        do {
+            let value = try await backend.read(language: "pt", namespace: "s\(status)")
+            return ("value \(value == ["k": "v"])", server.summary)
+        } catch let error as HTTPTransientError {
+            return ("transient \(error.statusCode.map(String.init) ?? "nil")", server.summary)
+        } catch BackendError.notFound {
+            return ("notFound", server.summary)
+        } catch HTTPBackendError.unexpectedStatus(let code) {
+            return ("unexpected \(code)", server.summary)
+        } catch {
+            return ("other \(error)", server.summary)
+        }
+    }
+
+    @Test(arguments: [
+        (200, "value true"), (204, "other invalidResponse"), (404, "notFound"), (410, "notFound"),
+        (408, "transient 408"), (425, "transient 425"), (429, "transient 429"), (500, "transient 500"),
+        (503, "transient 503"), (400, "unexpected 400"), (401, "unexpected 401"), (403, "unexpected 403"),
+        (301, "unexpected 301"),
+    ])
+    func readStatusesAreMapped(status: Int, expected: String) async throws {
+        let result = try await readOutcome(for: status)
+        #expect(result.thrown.hasPrefix(expected), "status \(status): \(result.thrown), \(result.summary)")
     }
 
     @Test func connectionFailureIsTransient() async throws {
@@ -386,7 +288,7 @@ struct HTTPBackendCreateTests {
 
     /// What `create` throws when the server answers `status`. The status travels in the namespace (`s408`), so the
     /// answer is the same whichever test server receives the request.
-    private func outcome(for status: Int) async throws -> (thrown: String, port: UInt16) {
+    private func outcome(for status: Int) async throws -> (thrown: String, summary: String) {
         let server = try TestServer { request, _ in
             let code = request.path.split(separator: "/").last.flatMap { Int($0.dropFirst()) } ?? 500
             return .init(status: code, body: "")
@@ -401,13 +303,13 @@ struct HTTPBackendCreateTests {
                 fallbackValue: nil,
                 isUpdate: false
             )
-            return ("no error", server.port)
+            return ("no error", server.summary)
         } catch let error as HTTPTransientError {
-            return ("transient \(error.statusCode.map(String.init) ?? "nil")", server.port)
+            return ("transient \(error.statusCode.map(String.init) ?? "nil")", server.summary)
         } catch HTTPBackendError.unexpectedStatus(let code) {
-            return ("unexpected \(code)", server.port)
+            return ("unexpected \(code)", server.summary)
         } catch {
-            return ("other \(error)", server.port)
+            return ("other \(error)", server.summary)
         }
     }
 
@@ -418,7 +320,7 @@ struct HTTPBackendCreateTests {
     ])
     func statusesAreMapped(status: Int, expected: String) async throws {
         let result = try await outcome(for: status)
-        #expect(result.thrown == expected, "status \(status), server on port \(result.port)")
+        #expect(result.thrown == expected, "status \(status): \(result.thrown), \(result.summary)")
     }
 
     @Test func rejectsUnsafeLanguageAndNamespace() async throws {
@@ -440,8 +342,6 @@ struct HTTPBackendCreateTests {
         #expect(server.requests.isEmpty)
     }
 }
-#endif
-
 @Suite("HTTPBackend configuration")
 struct HTTPBackendConfigurationTests {
     @Test func validatesBaseURL() {
