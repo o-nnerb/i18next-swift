@@ -54,6 +54,31 @@ struct FormatOptions {
         guard let language, !language.isEmpty else { return Locale.current }
         return Locale(identifier: language)
     }
+
+    /// The tags to look a locale up under in CLDR data, most specific first: `pt-br` is tried as `pt-BR`, then `pt`.
+    /// Unicode extensions (`-u-nu-latn`) and POSIX suffixes (`@x`, `.UTF-8`) are not part of the lookup.
+    static func lookupTags(for language: String?) -> [String] {
+        guard let language, !language.isEmpty else { return lookupTags(for: Locale.current.identifier) }
+        var text = language.replacingOccurrences(of: "_", with: "-")
+        for separator in ["@", "."] { text = text.components(separatedBy: separator).first ?? text }
+        var parts: [String] = []
+        for (index, part) in text.split(separator: "-").enumerated() {
+            if index > 0, part.count == 1 { break }  // "u", "x", …: an extension starts here
+            switch (index, part.count) {
+            case (0, _): parts.append(part.lowercased())
+            case (_, 4): parts.append(part.prefix(1).uppercased() + part.dropFirst().lowercased())
+            case (_, 2), (_, 3): parts.append(part.uppercased())
+            default: parts.append(String(part))
+            }
+        }
+        return (1...max(parts.count, 1)).reversed().map { parts.prefix($0).joined(separator: "-") }
+    }
+
+    /// The entry of a generated CLDR table for `language`: its own, or the nearest parent's.
+    static func lookup<Value>(_ table: [String: Value], for language: String?) -> Value? {
+        for tag in lookupTags(for: language) { if let value = table[tag] { return value } }
+        return nil
+    }
 }
 
 extension JSONValue {
