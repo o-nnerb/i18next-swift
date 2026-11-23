@@ -61,7 +61,7 @@ for dates; `numeric`, `style` and `range` for relative times; `type` and `style`
 
 ### What differs from `Intl`
 
-The behavior was checked against i18next 27.2.2 on thousands of values (4,689 scenarios, on Apple platforms), and these
+The behavior was checked against i18next 27.2.2 on thousands of values (6,421 scenarios, on Apple platforms), and these
 are the known gaps:
 
 - Numbers: `compact` notation uses the short names only. `style: unit` goes through Foundation's `Measurement`, which has
@@ -72,10 +72,17 @@ are the known gaps:
 - Dates: a JavaScript number is milliseconds since the epoch, as in i18next. Text is also read as an ISO 8601 date,
   which JSON has no type for. `UTC`, `GMT` and `Etc/UTC` are one zone named "UTC", as in `Intl`; other zone names
   (`timeZoneName`, `timeStyle: full`) are Foundation's, and matched `Intl` in every fixture on this macOS.
-- Relative times need whole numbers (`Intl` prints "in 2.5 days") and have no `quarter` unit, and exist only on Apple
-  platforms: swift-corelibs-foundation has no `RelativeDateTimeFormatter`, so elsewhere the value is left as it is.
-- Lists: `unit` lists come from a table of patterns (`CLDRListPatternData`) read out of the ICU on macOS, so they work
-  on every platform; their items must be strings.
+- Relative times are phrased from a table (`CLDRRelativeTimeData`) of what `Intl.RelativeTimeFormat` prints, so
+  fractions ("in 2.5 days"), quarters and `numeric: auto` work on every platform. It covers 48 locales: Arabic,
+  Bengali, Bulgarian, Catalan, Chinese (Simplified, Traditional, Hong Kong), Croatian, Czech, Danish, Dutch, English
+  (AU, GB, IN), Finnish, French (CA), German, Greek, Hebrew, Hindi, Hungarian, Indonesian, Italian, Japanese, Korean,
+  Malay, Norwegian (`nb`, `no`), Persian, Polish, Portuguese (PT), Romanian, Russian, Serbian, Slovak, Slovenian,
+  Spanish (419, MX, US), Swedish, Thai, Turkish, Ukrainian and Vietnamese. Another region of those languages reads its
+  language's phrases (Argentine Spanish reads `es-419`'s), which `Intl` words slightly differently for some regions.
+  For any other locale, Apple platforms use `RelativeDateTimeFormatter`, which takes whole numbers only and has no
+  `quarter` unit; elsewhere (swift-corelibs-foundation has no such formatter) the value is left as it is.
+- Lists: `unit` lists come from a table of patterns (`CLDRListPatternData`, all locales) read out of the ICU on macOS, so
+  they work on every platform; their items must be strings.
 
 A value a formatter can't handle is left as it was, as in i18next. Results can differ between platforms and OS
 releases wherever their ICU data does.
