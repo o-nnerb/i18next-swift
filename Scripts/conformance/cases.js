@@ -1046,3 +1046,348 @@ suite('missingKeyNoValueFallbackToKey/on', __secondSource, {
 suite('missingKeyNoValueFallbackToKey/call', __secondSource, {
     lng: 'en', fallbackLng: 'en', saveMissing: true, resources: __noValueResources
 }, [['nokey', { missingKeyNoValueFallbackToKey: true }], ['nokey', { missingKeyNoValueFallbackToKey: false }]], { kind: 'missing' });
+
+// MARK: store accessors, hydrate and cloneInstance (written for this port: there is no upstream test to take them
+// from; the answers are still i18next's own). A `session` runs steps against named instances, see harness.js.
+
+var __batch3Source = 'ResourceStore / I18n.hydrate / I18n.cloneInstance (written for this port)';
+var __batch3Resources = {
+    en: { translation: { a: 'A en', b: 'B en', nested: { x: 'X en' } }, common: { ok: 'OK' } },
+    de: { translation: { a: 'A de' } },
+    fr: {},
+    es: { translation: {}, common: { ok: '' } }
+};
+
+suite('getDataByLanguage', __batch3Source, { lng: 'en', resources: __batch3Resources },
+    ['en', 'de', 'fr', 'es', 'zz', 'EN', 'en-US', ''].map(function (l) { return [l]; }),
+    { kind: 'getDataByLanguage' });
+
+function sessionSuite(name, init, steps) {
+    suite('session/' + name, __batch3Source, init, [[null, { steps: steps }]], { kind: 'session' });
+}
+
+// ResourceStore: writes, merges, removals and the questions asked about them.
+var __store = { lng: 'en', fallbackLng: 'en', resources: __batch3Resources };
+sessionSuite('store/addResource', __store, [
+    ['i18n', 'addResource', ['en', 'translation', 'c', 'C']],
+    ['i18n', 'addResource', ['en', 'translation', 'deep.er.key', 'D']],
+    ['i18n', 'addResource', ['fr', 'translation', 'a', 'A fr']],
+    ['i18n', 'addResource', ['en', 'translation', 'a', 'A replaced']],
+    ['i18n', 'addResource', ['en', 'translation', 'nested.x', { y: 1 }]],
+    ['i18n', 'toJSON'],
+    ['i18n', 'getResource', ['en', 'translation', 'deep.er.key']],
+    ['i18n', 'hasLanguageSomeTranslations', ['fr']]
+]);
+sessionSuite('store/addResource-empty-key', __store, [
+    ['i18n', 'addResource', ['en', 'translation', '', { whole: 'bundle' }]],
+    ['i18n', 'getResourceBundle', ['en', 'translation']],
+    ['i18n', 'toJSON']
+]);
+sessionSuite('store/addResources', __store, [
+    ['i18n', 'addResources', ['en', 'translation', { c: 'C', 'd.e': 'DE', n: { m: 'NM' } }]],
+    ['i18n', 'addResources', ['de', 'extra', { k: 'K' }]],
+    ['i18n', 'toJSON'],
+    ['i18n', 't', ['d.e']],
+    ['i18n', 't', ['k', { ns: 'extra', lng: 'de' }]]
+]);
+sessionSuite('store/addResourceBundle-shallow', __store, [
+    ['i18n', 'addResourceBundle', ['en', 'translation', { a: 'A new', z: 'Z', nested: { y: 'Y' } }]],
+    ['i18n', 'getResourceBundle', ['en', 'translation']],
+    ['i18n', 'addResourceBundle', ['pt', 'translation', { a: 'A pt' }]],
+    ['i18n', 'toJSON']
+]);
+sessionSuite('store/addResourceBundle-deep', __store, [
+    ['i18n', 'addResourceBundle', ['en', 'translation', { a: 'A new', z: 'Z', nested: { y: 'Y', x: 'X new' } }, true, false]],
+    ['i18n', 'getResourceBundle', ['en', 'translation']],
+    ['i18n', 'addResourceBundle', ['en', 'translation', { a: 'A over', nested: { x: 'X over' } }, true, true]],
+    ['i18n', 'getResourceBundle', ['en', 'translation']],
+    ['i18n', 'addResourceBundle', ['en', 'translation', { nested: 'flat now', b: { deeper: 1 } }, true, false]],
+    ['i18n', 'getResourceBundle', ['en', 'translation']],
+    ['i18n', 'addResourceBundle', ['en', 'translation', { nested: 'flat now', b: { deeper: 1 } }, true, true]],
+    ['i18n', 'getResourceBundle', ['en', 'translation']]
+]);
+sessionSuite('store/removeResourceBundle', __store, [
+    ['i18n', 'removeResourceBundle', ['en', 'common']],
+    ['i18n', 'hasResourceBundle', ['en', 'common']],
+    ['i18n', 'getDataByLanguage', ['en']],
+    ['i18n', 'removeResourceBundle', ['en', 'nothing']],
+    ['i18n', 'removeResourceBundle', ['zz', 'translation']],
+    ['i18n', 'removeResourceBundle', ['de', 'translation']],
+    ['i18n', 'getDataByLanguage', ['de']],
+    ['i18n', 'hasLanguageSomeTranslations', ['de']],
+    ['i18n', 'toJSON']
+]);
+sessionSuite('store/hasLanguageSomeTranslations', {
+    lng: 'en',
+    resources: {
+        a: { ns: { k: 'v' } }, b: { ns: {} }, c: { ns: {}, other: { k: 1 } }, d: { ns: [] }, e: { ns: [1] },
+        f: { ns: '' }, g: { ns: 'text' }, h: { ns: 0 }, i: { ns: 5 }, j: { ns: true }, k: { ns: false }, l: { ns: null }
+    }
+}, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'zz'].map(function (l) {
+    return ['i18n', 'hasLanguageSomeTranslations', [l]];
+}));
+sessionSuite('store/hasResourceBundle', __store, [
+    ['i18n', 'hasResourceBundle', ['en', 'translation']],
+    ['i18n', 'hasResourceBundle', ['fr', 'translation']],
+    ['i18n', 'hasResourceBundle', ['es', 'common']],
+    ['i18n', 'hasResourceBundle', ['en', 'zzz']],
+    ['i18n', 'getResourceBundle', ['es', 'common']],
+    ['i18n', 'getResourceBundle', ['es', 'zzz']]
+]);
+
+// hydrate: seeds the store and the language, once each.
+var __hydrated = { en: { translation: { hello: 'Hello', nested: { k: 'K' } }, extra: { e: 'E' } }, pt: { translation: { hello: 'Olá' } } };
+sessionSuite('hydrate/resources-only', { lng: 'en', fallbackLng: 'en' }, [
+    ['i18n', 't', ['hello']],
+    ['i18n', 'hydrate', [__hydrated]],
+    ['i18n', 't', ['hello']],
+    ['i18n', 't', ['e', { ns: 'extra' }]],
+    ['i18n', 'language'],
+    ['i18n', 'resolvedLanguage'],
+    ['i18n', 'getDataByLanguage', ['pt']]
+]);
+sessionSuite('hydrate/with-language', { lng: 'en', fallbackLng: 'en' }, [
+    ['i18n', 'hydrate', [__hydrated, 'pt']],
+    ['i18n', 'language'],
+    ['i18n', 'resolvedLanguage'],
+    ['i18n', 'languages'],
+    ['i18n', 't', ['hello']],
+    ['i18n', 't', ['nested.k']]
+]);
+sessionSuite('hydrate/language-only', { lng: 'en', fallbackLng: 'en', resources: __hydrated }, [
+    ['i18n', 'hydrate', [null, 'pt']],
+    ['i18n', 'language'],
+    ['i18n', 't', ['hello']],
+    ['i18n', 'resolvedLanguage']
+]);
+sessionSuite('hydrate/only-once', { lng: 'en', fallbackLng: 'en' }, [
+    ['i18n', 'hydrate', [__hydrated, 'pt']],
+    ['i18n', 'hydrate', [{ en: { translation: { hello: 'Second' } } }, 'en']],
+    ['i18n', 'language'],
+    ['i18n', 't', ['hello']],
+    ['i18n', 'hydrate', [{ en: { translation: { hello: 'Third' } } }]],
+    ['i18n', 't', ['hello']]
+]);
+sessionSuite('hydrate/replaces-store', { lng: 'en', resources: { en: { translation: { old: 'Old', hello: 'Init' } } } }, [
+    ['i18n', 't', ['old']],
+    ['i18n', 'hydrate', [__hydrated, 'en']],
+    ['i18n', 't', ['old']],
+    ['i18n', 't', ['hello']],
+    ['i18n', 'getDataByLanguage', ['en']]
+]);
+sessionSuite('hydrate/empty-arguments', { lng: 'en', resources: __hydrated }, [
+    ['i18n', 'hydrate', []],
+    ['i18n', 'hydrate', [null, '']],
+    ['i18n', 'language'],
+    ['i18n', 'hydrate', [{}, 'pt']],
+    ['i18n', 'getDataByLanguage', ['en']],
+    ['i18n', 'language']
+]);
+sessionSuite('hydrate/on-a-clone', { lng: 'en', resources: __hydrated }, [
+    ['i18n', 'cloneInstance', [{}], 'c'],
+    ['c', 'hydrate', [{ en: { translation: { hello: 'Never' } } }, 'pt']],
+    ['c', 'language'],
+    ['c', 't', ['hello']],
+    ['i18n', 't', ['hello']]
+]);
+
+// cloneInstance
+var __cloneInit = { lng: 'en', fallbackLng: 'en', resources: __batch3Resources };
+sessionSuite('clone/inherits', __cloneInit, [
+    ['i18n', 'cloneInstance', [{}], 'c'],
+    ['c', 'language'],
+    ['c', 'languages'],
+    ['c', 'resolvedLanguage'],
+    ['c', 't', ['a']],
+    ['c', 't', ['ok', { ns: 'common' }]],
+    ['c', 't', ['missing']]
+]);
+sessionSuite('clone/language-override', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ lng: 'de' }], 'c'],
+    ['c', 'language'],
+    ['c', 'languages'],
+    ['c', 'resolvedLanguage'],
+    ['c', 't', ['a']],
+    ['c', 't', ['b']],
+    ['i18n', 'language'],
+    ['i18n', 't', ['a']]
+]);
+sessionSuite('clone/languages-are-independent', __cloneInit, [
+    ['i18n', 'cloneInstance', [{}], 'c'],
+    ['c', 'changeLanguage', ['de']],
+    ['c', 'language'],
+    ['c', 't', ['a']],
+    ['i18n', 'language'],
+    ['i18n', 't', ['a']],
+    ['i18n', 'changeLanguage', ['fr']],
+    ['i18n', 'language'],
+    ['c', 'language'],
+    ['c', 'resolvedLanguage'],
+    ['i18n', 'resolvedLanguage']
+]);
+// i18next starts the clone in `lng` as it was configured, not in the language the original is in now; this port
+// starts it in the current one (see ConformanceTests.swift).
+sessionSuite('clone/after-original-changed-language', __cloneInit, [
+    ['i18n', 'changeLanguage', ['de']],
+    ['i18n', 'cloneInstance', [{}], 'c'],
+    ['c', 'language'],
+    ['c', 't', ['a']]
+]);
+sessionSuite('clone/shared-store', __cloneInit, [
+    ['i18n', 'cloneInstance', [{}], 'c'],
+    ['c', 'addResource', ['en', 'translation', 'fromClone', 'FC']],
+    ['i18n', 't', ['fromClone']],
+    ['i18n', 'addResource', ['en', 'translation', 'fromOriginal', 'FO']],
+    ['c', 't', ['fromOriginal']],
+    ['c', 'addResourceBundle', ['de', 'translation', { b: 'B de' }]],
+    ['i18n', 't', ['b', { lng: 'de' }]],
+    ['i18n', 'removeResourceBundle', ['de', 'translation']],
+    ['c', 'hasResourceBundle', ['de', 'translation']],
+    ['c', 'getDataByLanguage', ['de']]
+]);
+sessionSuite('clone/forked-store', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ forkResourceStore: true }], 'c'],
+    ['c', 't', ['a']],
+    ['c', 'addResource', ['en', 'translation', 'fromClone', 'FC']],
+    ['i18n', 't', ['fromClone']],
+    ['c', 't', ['fromClone']],
+    ['i18n', 'addResource', ['en', 'translation', 'fromOriginal', 'FO']],
+    ['c', 't', ['fromOriginal']],
+    ['i18n', 't', ['fromOriginal']],
+    ['c', 'addResourceBundle', ['de', 'translation', { b: 'B de' }]],
+    ['i18n', 'getResourceBundle', ['de', 'translation']],
+    ['c', 'getResourceBundle', ['de', 'translation']],
+    ['i18n', 'removeResourceBundle', ['en', 'common']],
+    ['c', 'hasResourceBundle', ['en', 'common']],
+    ['c', 'toJSON']
+]);
+sessionSuite('clone/forked-store-copies-deeply', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ forkResourceStore: true }], 'c'],
+    ['c', 'addResource', ['en', 'translation', 'nested.x', 'X clone']],
+    ['c', 't', ['nested.x']],
+    ['i18n', 't', ['nested.x']],
+    ['i18n', 'addResource', ['en', 'translation', 'nested.z', 'Z original']],
+    ['c', 't', ['nested.z']],
+    ['i18n', 'getResourceBundle', ['en', 'translation']],
+    ['c', 'getResourceBundle', ['en', 'translation']]
+]);
+sessionSuite('clone/forked-store-with-language', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ forkResourceStore: true, lng: 'de' }], 'c'],
+    ['c', 'language'],
+    ['c', 't', ['a']],
+    ['c', 'resolvedLanguage']
+]);
+sessionSuite('clone/options', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ interpolation: { prefix: '<<', suffix: '>>' }, keySeparator: '/', defaultNS: 'common' }], 'c'],
+    ['i18n', 'addResource', ['en', 'translation', 'ip', 'x {{n}} <<n>>']],
+    ['i18n', 't', ['ip', { n: 1 }]],
+    ['c', 't', ['ip', { n: 1 }]],
+    ['c', 't', ['ok']],
+    ['i18n', 't', ['ok']],
+    ['i18n', 't', ['nested.x']],
+    ['c', 't', ['translation:nested/x']]
+]);
+sessionSuite('clone/missing-key-options', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ returnEmptyString: true }], 'c'],
+    ['c', 't', ['nothing', { defaultValue: 'dv' }]],
+    ['c', 't', ['nothing']],
+    ['c', 'exists', ['nothing']],
+    ['c', 'exists', ['a']]
+]);
+sessionSuite('clone/post-processors', { lng: 'en', resources: __batch3Resources, postProcess: ['bang'] }, [
+    ['i18n', 'cloneInstance', [{}], 'c'],
+    ['c', 't', ['a']],
+    ['c', 't', ['a', { postProcess: ['uppercase', 'wrap'] }]],
+    ['c', 'usePostProcessor', ['angle']],
+    ['c', 't', ['a', { postProcess: ['angle'] }]],
+    ['i18n', 't', ['a', { postProcess: ['angle'] }]],
+    ['i18n', 'usePostProcessor', ['question']],
+    ['c', 't', ['a', { postProcess: ['question', 'angle'] }]],
+    ['i18n', 't', ['a', { postProcess: ['question', 'angle'] }]]
+]);
+sessionSuite('clone/clone-of-clone', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ lng: 'de' }], 'c'],
+    ['c', 'cloneInstance', [{}], 'cc'],
+    ['cc', 'language'],
+    ['cc', 't', ['a']],
+    ['cc', 'addResource', ['de', 'translation', 'deep', 'D']],
+    ['i18n', 't', ['deep', { lng: 'de' }]],
+    ['c', 'cloneInstance', [{ forkResourceStore: true }], 'cf'],
+    ['cf', 'addResource', ['de', 'translation', 'forked', 'F']],
+    ['i18n', 't', ['forked', { lng: 'de' }]],
+    ['cf', 't', ['forked', { lng: 'de' }]],
+    ['cf', 't', ['deep', { lng: 'de' }]]
+]);
+sessionSuite('clone/language-options-follow-the-clone', __cloneInit, [
+    ['i18n', 'cloneInstance', [{ fallbackLng: 'de' }], 'c'],
+    ['c', 'languages'],
+    ['c', 't', ['a', { lng: 'fr' }]],
+    ['i18n', 'languages'],
+    ['i18n', 't', ['a', { lng: 'fr' }]]
+]);
+
+// MARK: BCP 47 aliases (what `Intl.getCanonicalLocales` does beyond the structure of a tag). The expected answers are
+// those of the system's ICU, as JavaScriptCore exposes it.
+
+var __aliasTags = [
+    // deprecated and ISO 639-2/3 languages
+    'iw', 'iw-IL', 'in', 'in-ID', 'ji', 'jw', 'mo', 'mo-MD', 'tl', 'tl-PH', 'tl-Latn-PH', 'fil', 'sh', 'sh-Latn', 'sh-BA',
+    'sh-cyrl', 'sh-latn-rs', 'hbs', 'hbs-BA', 'cnr', 'cnr-ME', 'cnr-BA', 'cnr-Cyrl-ME', 'swc', 'swc-CD', 'swc-KE', 'prs',
+    'prs-AF', 'prs-IR', 'drw-AF', 'tnf-AF', 'kmr', 'kmr-TR', 'ckb', 'ckb-IQ', 'arb', 'arb-SA', 'pes', 'pes-IR', 'zsm',
+    'zsm-MY', 'zlm', 'nep', 'npi', 'aze', 'uzn', 'azj', 'ekk', 'est', 'lvs', 'hrv', 'srp', 'scc', 'scr', 'bos', 'cmn',
+    'cmn-Hans', 'cmn-Hans-CN', 'cmn-TW', 'yue', 'yue-HK', 'eng', 'eng-US', 'eng-GB', 'spa', 'spa-MX', 'por', 'por-BR',
+    'deu', 'deu-AT', 'ger', 'fra', 'fra-CA', 'fre', 'ita', 'jpn', 'jpn-JP', 'kor', 'kor-KR', 'rus', 'rus-RU', 'zho',
+    'zho-CN', 'zho-Hans', 'zho-Hant-TW', 'chi', 'chi-TW', 'dut', 'nld', 'gre', 'ell', 'cze', 'ces', 'pol', 'swe', 'dan',
+    'nor', 'fin', 'tur', 'heb', 'ara', 'hin', 'tha', 'vie', 'ind', 'msa', 'fas', 'kat', 'isl', 'mkd', 'mri', 'ron', 'slk',
+    'sqi', 'bod', 'cym', 'eus', 'hye', 'mya', 'bh', 'bih', 'no', 'no-NO', 'nb', 'nn', 'ckb', 'gom', 'pnb', 'pbu', 'nno',
+    'nob', 'ory', 'ori', 'ukr', 'ukr-UA', 'ell-GR', 'IW', 'Iw-il', 'ENG-us', 'SGN-us',
+    // deprecated and numeric regions
+    'en-UK', 'en-uk', 'fr-FX', 'de-DD', 'en-BU', 'my-BU', 'en-TP', 'pt-TP', 'en-ZR', 'fr-ZR', 'en-YD', 'en-840', 'en-826',
+    'es-724', 'pt-076', 'de-276', 'fr-250', 'zh-156', 'ja-392', 'en-001', 'es-419', 'en-150', 'en-062', 'en-AN', 'nl-AN',
+    'es-AN', 'pap-AN', 'en-CS', 'sr-CS', 'sr-YU', 'sl-YU', 'mk-YU', 'bs-YU', 'sr-cyrl-cs', 'sr-latn-yu', 'en-SU', 'ru-SU',
+    'uk-su', 'ka-SU', 'hy-su', 'lv-SU', 'ru-172', 'ka-172', 'en-172', 'hy-810', 'et-810', 'lt-810', 'en-200', 'cs-200',
+    'sk-200', 'en-230', 'en-530', 'nl-530', 'en-532', 'sl-890', 'hr-890', 'bs-890', 'mk-890', 'sr-890', 'sr-891',
+    'de-278', 'de-280', 'en-736', 'ar-736', 'en-886', 'en-582', 'mh-582', 'en-QU', 'de-QU', 'en-NT', 'ar-NT', 'en-NH',
+    'fr-NH', 'bi-NH', 'en-HV', 'fr-HV', 'en-RH', 'en-DY', 'fr-DY', 'en-VD', 'vi-VD', 'en-FQ', 'en-NQ', 'en-CT', 'en-JT',
+    'en-MI', 'en-PC', 'en-PU', 'en-PZ', 'es-PZ', 'en-WK', 'en-999', 'en-958', 'en-QM', 'en-XA',
+    // scripts
+    'en-Qaai', 'und-Qaai', 'und-Zinh', 'zh-Hani', 'sr-Cyrl', 'sr-latn',
+    // variants
+    'en-heploc', 'en-Latn-heploc', 'ja-latn-hepburn-heploc', 'ja-hepburn-heploc', 'ja-hepburn-fonipa-heploc',
+    'en-heploc-hepburn', 'ja-latn-alalc97-hepburn', 'ja-hepburn', 'en-polytoni', 'el-polytoni', 'el-polyton',
+    'el-polytoni-1901', 'hy-arevela', 'hy-arevmda', 'hy-Latn-arevela', 'hy-AM-arevmda', 'hy-arevela-fonipa', 'en-aaland',
+    'sv-aaland', 'sv-SE-aaland', 'sv-aaland-fonipa', 'sv-AX', 'zh-guoyu', 'zh-Hans-guoyu', 'zh-CN-guoyu', 'en-guoyu',
+    'zh-hakka', 'zh-hakka-fonipa', 'zh-xiang', 'en-hakka', 'art-lojban', 'art-lojban-fonipa', 'en-lojban', 'cel-gaulish',
+    'cel-GAULISH', 'en-gaulish', 'aa-saaho', 'ssy-saaho', 'nb-bokmal', 'nn-nynorsk', 'no-bokmal', 'no-nynorsk',
+    'ca-ES-valencia', 'en-1901', 'de-1996', 'de-AT-1901', 'en-fonipa-fonipa', 'en-oxendict', 'en-GB-oxendict',
+    'en-GB-oed', 'de-CH-1901-fonipa', 'sl-rozaj-biske', 'sl-biske-rozaj',
+    // sign languages
+    'sgn-US', 'sgn-us', 'sgn-BR', 'sgn-CO', 'sgn-DK', 'sgn-DE', 'sgn-FR', 'sgn-GB', 'sgn-UK', 'sgn-GR', 'sgn-IE', 'sgn-IT',
+    'sgn-JP', 'sgn-MX', 'sgn-NI', 'sgn-NL', 'sgn-NO', 'sgn-PT', 'sgn-SE', 'sgn-ZA', 'sgn-ES', 'sgn-CN', 'sgn-CU', 'sgn-DD',
+    'sgn-FX', 'sgn-AN', 'sgn-Latn-US', 'sgn-US-fonipa', 'sgn-BR-fonipa', 'sgn-BE', 'sgn-CH', 'sgn', 'ase', 'bfi',
+    // grandfathered tags and extended languages
+    'i-klingon', 'zh-min-nan', 'zh-cmn', 'zh-cmn-Hans-CN', 'zh-yue', 'en-gb-oed', 'no-bok', 'no-nyn', 'ar-arb',
+    // extensions
+    'en-u-nu-latn', 'de-u-co-phonebk', 'en-t-ja', 'en-a-bbb-x-a-ccc',
+    'en-u-nu-latn-a-ext', 'IW-u-nu-latn', 'tl-u-nu-latn',
+    // private use
+    'x-private', 'en-x-private', 'iw-x-private', 'x', 'en-x'
+];
+suite('languageUtils/formatCode/aliases', 'Intl.getCanonicalLocales', {},
+    __aliasTags.map(function (c) { return [c]; }), { kind: 'formatCode' });
+suite('languageUtils/formatCode/aliases[lowerCaseLng]', 'Intl.getCanonicalLocales', { lowerCaseLng: true },
+    ['iw-IL', 'sgn-US', 'en-UK', 'sr-latn-yu', 'cmn-Hans-CN', 'tl-PH', 'sh', 'ru-SU'].map(function (c) { return [c]; }),
+    { kind: 'formatCode' });
+suite('languageUtils/formatCode/aliases[cleanCode]', 'Intl.getCanonicalLocales', { cleanCode: true },
+    ['IW', 'iw-il', 'TL', 'ENG', 'sgn-us', 'EN-uk'].map(function (c) { return [c]; }), { kind: 'formatCode' });
+suite('languageUtils/formatCode/aliases[cleanCode=false]', 'Intl.getCanonicalLocales', { cleanCode: false },
+    ['IW', 'iw-il', 'TL', 'ENG', 'iw', 'sgn-us', 'EN-uk'].map(function (c) { return [c]; }), { kind: 'formatCode' });
+suite('languageUtils/languagePart/aliases', 'Intl.getCanonicalLocales', {},
+    ['iw-IL', 'tl-PH', 'eng-US', 'sh-BA', 'cnr-ME', 'sgn-US', 'ru-SU'].map(function (c) { return [c]; }),
+    { kind: 'languagePart' });
+suite('languageUtils/hierarchy/aliases', 'Intl.getCanonicalLocales', { fallbackLng: 'en' },
+    ['iw-IL', 'tl-PH', 'eng-US', 'sh-BA', 'cnr-ME', 'ru-SU', 'zh-Hant-TW', 'sr-latn-yu'].map(function (c) { return [c]; }),
+    { kind: 'resolveHierarchy' });
+suite('languageUtils/bestMatch/aliases', 'Intl.getCanonicalLocales',
+    { supportedLngs: ['he', 'fil', 'sr-Latn', 'en'], nonExplicitSupportedLngs: true },
+    [[['iw-IL']], [['tl-PH']], [['sh-BA']], [['eng-US']], [['iw', 'en']], [['sgn-US']]], { kind: 'bestMatch' });

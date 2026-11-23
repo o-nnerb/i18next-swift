@@ -65,7 +65,14 @@ struct Unsupported: Error, CustomStringConvertible {
 /// Cases where this port deliberately answers differently, with the reason. A case listed here that starts
 /// matching fails the run, so entries can't go stale.
 private let knownDifferences: [String: String] = [
-    "translate/arrayOfKeys#11": "i18next returns undefined for an empty array of keys; here `t` always returns a String"
+    "translate/arrayOfKeys#11":
+        "i18next returns undefined for an empty array of keys; here `t` always returns a String",
+    "languageUtils/formatCode#11":
+        "JavaScriptCore's ICU rejects the tag and i18next keeps it; the CLDR registers `sgn-BE-FR` as `sfb` (V8 and the ICU4C of other platforms answer that), and so does this port",
+    "session/clone/after-original-changed-language#0":
+        "i18next starts a clone in the `lng` the original was configured with, even after the original changed language; here it starts in the language the original is in",
+    "session/clone/language-options-follow-the-clone#0":
+        "i18next gives a clone the original's language settings (fallbackLng, load, supportedLngs...), ignoring the clone's own; here the clone's options apply",
 ]
 
 @Suite("i18next conformance")
@@ -79,13 +86,20 @@ struct ConformanceTests {
             case .success(let actual) where actual == scenario.normalizedExpected: continue
             case .success(let actual):
                 lines.append(
-                    "DIFF  \(scenario.id) \(scenario.key.interpolationString) \(scenario.options.interpolationString)\n      i18next: \(scenario.expected.interpolationString)\n      port:    \(actual.interpolationString)"
+                    "DIFF  \(scenario.id) \(scenario.key.interpolationString) \(scenario.options.interpolationString)\n      i18next: \(Self.compact(scenario.normalizedExpected))\n      port:    \(Self.compact(actual))"
                 )
             case .failure(let error):
                 lines.append("SKIP  \(scenario.id) \(error)")
             }
         }
         print("CONFORMANCE: \(lines.count) of \(ConformanceCase.all.count)\n" + lines.joined(separator: "\n"))
+    }
+
+    /// One-line JSON, which tells apart what `interpolationString` can't (objects, arrays of them).
+    private static func compact(_ value: JSONValue) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return (try? encoder.encode(value)).flatMap { String(decoding: $0, as: UTF8.self) } ?? "?"
     }
 
     @Test func fixturesAreLoaded() {
@@ -199,6 +213,14 @@ enum ConformanceRunner {
             var lng: String?
             if case .object(let fields) = scenario.options { lng = fields["lng"]?.stringValue }
             return .bool(i18n.hasLoadedNamespace(namespace, lng: lng))
+        case "getDataByLanguage":
+            guard case .string(let lng) = scenario.key else { throw Unsupported(reason: "non-string key") }
+            return i18n.getDataByLanguage(lng: lng).map(JSONValue.object) ?? .null
+        case "session":
+            guard case .object(let fields) = scenario.options, case .array(let steps)? = fields["steps"] else {
+                throw Unsupported(reason: "session steps")
+            }
+            return .array(try runSession(i18n, steps))
         case "pluralSuffix":
             guard case .string(let language) = scenario.key, case .object(let fields) = scenario.options,
                 case .number(let count)? = fields["count"]
@@ -229,6 +251,104 @@ enum ConformanceRunner {
             throw Unsupported(reason: "kind \(scenario.kind)")
         }
     }
+
+    /// Runs the steps of a `session` scenario (see harness.js) and answers with one entry per step.
+    private static func runSession(_ first: I18next, _ steps: [JSONValue]) throws -> [JSONValue] {
+        var instances = ["i18n": first]
+        return try steps.map { step in
+            guard case .array(let parts) = step, parts.count >= 2, case .string(let name) = parts[0],
+                case .string(let method) = parts[1], let target = instances[name]
+            else { throw Unsupported(reason: "session step \(step)") }
+            var args: [JSONValue] = []
+            if parts.count > 2, case .array(let given) = parts[2] { args = given }
+            func arg(_ index: Int) -> JSONValue { index < args.count ? args[index] : .null }
+            func text(_ index: Int) throws -> String { try string(arg(index)) }
+
+            switch method {
+            case "cloneInstance":
+                guard parts.count > 3, case .string(let alias) = parts[3] else {
+                    throw Unsupported(reason: "clone name")
+                }
+                var fork = false
+                var settings: [String: JSONValue] = [:]
+                if case .object(var given) = arg(0) {
+                    if case .bool(let flag)? = given.removeValue(forKey: "forkResourceStore") { fork = flag }
+                    settings = given
+                }
+                var failure: Error?
+                let clone = target.cloneInstance(forkResourceStore: fork) { options in
+                    do { try apply(init: .object(settings), to: &options) } catch { failure = error }
+                }
+                if let failure { throw failure }
+                instances[alias] = clone
+                return .null
+            case "t":
+                return .string(target.t(try text(0), try translationOptions(arg(1))))
+            case "exists":
+                return .bool(target.exists(try text(0), try translationOptions(arg(1))))
+            case "language":
+                return target.language.map(JSONValue.string) ?? .null
+            case "languages":
+                return .array(target.languages.map(JSONValue.string))
+            case "resolvedLanguage":
+                return target.resolvedLanguage.map(JSONValue.string) ?? .null
+            case "changeLanguage":
+                target.setLanguage(arg(0).stringValue)
+                return .null
+            case "addResource":
+                target.store.addResource(lng: try text(0), ns: try text(1), key: try text(2), value: arg(3))
+                return .null
+            case "addResources":
+                guard case .object(let resources) = arg(2) else { throw Unsupported(reason: "addResources") }
+                target.store.addResources(lng: try text(0), ns: try text(1), resources: resources)
+                return .null
+            case "addResourceBundle":
+                target.store.addResourceBundle(
+                    lng: try text(0),
+                    ns: try text(1),
+                    resources: arg(2),
+                    deep: arg(3) == .bool(true),
+                    overwrite: arg(4) == .bool(true)
+                )
+                return .null
+            case "removeResourceBundle":
+                target.store.removeResourceBundle(lng: try text(0), ns: try text(1))
+                return .null
+            case "getResource":
+                return target.store.getResource(lng: try text(0), ns: try text(1), key: try text(2)) ?? .null
+            case "getResourceBundle":
+                return target.store.getResourceBundle(lng: try text(0), ns: try text(1)) ?? .null
+            case "hasResourceBundle":
+                return .bool(target.hasResourceBundle(lng: try text(0), ns: try text(1)))
+            case "getDataByLanguage":
+                return target.getDataByLanguage(lng: try text(0)).map(JSONValue.object) ?? .null
+            case "hasLanguageSomeTranslations":
+                return .bool(target.store.hasLanguageSomeTranslations(lng: try text(0)))
+            case "toJSON":
+                return .object(target.store.data.mapValues(JSONValue.object))
+            case "hydrate":
+                var resources: ResourceStore.Resources?
+                if case .object = arg(0) { resources = try Self.resources(arg(0)) }
+                target.hydrate(resources, lng: arg(1).stringValue)
+                return .null
+            case "usePostProcessor":
+                let name = try text(0)
+                guard let processor = postProcessors[name] ?? lateProcessors[name] else {
+                    throw Unsupported(reason: "post-processor \(name)")
+                }
+                target.addPostProcessor(name, processor)
+                return .null
+            default:
+                throw Unsupported(reason: "session method \(method)")
+            }
+        }
+    }
+
+    /// The post-processors `harness.js` lets a session register after the instance exists.
+    static let lateProcessors: [String: I18next.PostProcessor] = [
+        "angle": { value, _ in "<\(value)>" },
+        "question": { value, _ in value + "?" },
+    ]
 
     /// Runs `t` and records every key the `missingKeyHandler` receives.
     private static func runMissing(_ scenario: ConformanceCase) throws -> JSONValue {
@@ -266,8 +386,17 @@ enum ConformanceRunner {
 
     static func makeInstance(_ init: JSONValue, configure: (inout I18next.Options) -> Void = { _ in }) throws -> I18next
     {
-        guard case .object(let fields) = `init` else { throw Unsupported(reason: "init is not an object") }
         var options = I18next.Options()
+        try apply(init: `init`, to: &options)
+        configure(&options)
+        let i18n = I18next(options)
+        for (name, processor) in postProcessors { i18n.addPostProcessor(name, processor) }
+        return i18n
+    }
+
+    /// Applies i18next init options (as JSON) to `options`.
+    static func apply(init: JSONValue, to options: inout I18next.Options) throws {
+        guard case .object(let fields) = `init` else { throw Unsupported(reason: "init is not an object") }
 
         for (name, value) in fields.sorted(by: { $0.key < $1.key }) {
             switch name {
@@ -345,10 +474,6 @@ enum ConformanceRunner {
                 throw Unsupported(reason: "init option `\(name)`")
             }
         }
-        configure(&options)
-        let i18n = I18next(options)
-        for (name, processor) in postProcessors { i18n.addPostProcessor(name, processor) }
-        return i18n
     }
 
     /// The post-processors `harness.js` registers on every instance.
@@ -383,7 +508,7 @@ enum ConformanceRunner {
         }
     }
 
-    private static func resources(_ value: JSONValue) throws -> ResourceStore.Resources {
+    static func resources(_ value: JSONValue) throws -> ResourceStore.Resources {
         guard case .object(let languages) = value else { throw Unsupported(reason: "resources") }
         var result: ResourceStore.Resources = [:]
         for (language, namespaces) in languages {

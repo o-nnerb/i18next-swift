@@ -183,16 +183,27 @@ public struct LanguageUtils: Sendable {
 
 // MARK: - BCP 47
 
-/// Structural canonicalization of language tags (case, ordering of variants and extensions) plus a few of the
-/// deprecated-subtag aliases. This is what `Intl.getCanonicalLocales` does for the tags that matter here; ICU's full
-/// alias data (for example `sgn-BE-FR` → `sfb`) is not included.
+/// Canonicalization of language tags, as `Intl.getCanonicalLocales` does it: the structure (case, order of variants and
+/// extensions) and the aliases of the Unicode CLDR (`iw` → `he`, `UK` → `GB`, `sgn-US` → `ase`; see
+/// ``BCP47AliasData``). Keywords of the `-u-` extension are left as written, and so is the tag of a language this
+/// doesn't know.
 enum BCP47 {
-    private static let languageAliases = ["iw": "he", "ji": "yi", "in": "id", "jw": "jv", "mo": "ro"]
-    private static let regionAliases = [
-        "UK": "GB", "BU": "MM", "DD": "DE", "FX": "FR", "TP": "TL", "YD": "YE", "ZR": "CD",
+    /// Tags whose three subtags were registered as one: the sign languages of Belgium and Switzerland.
+    private static let combinedTags = ["sgn-be-fr": "sfb", "sgn-be-nl": "vgt", "sgn-ch-de": "sgg"]
+
+    /// A variant that, with this language, stands for a language of its own (`zh-hakka` → `hak`).
+    private static let languageOfVariant = [
+        "zh-guoyu": "zh", "zh-hakka": "hak", "zh-xiang": "hsn", "art-lojban": "jbo", "cel-gaulish": "xtg",
+        "no-bokmal": "nb", "no-nynorsk": "nn", "aa-saaho": "ssy", "hy-arevela": "hy", "hy-arevmda": "hyw",
     ]
+    /// Variants that are left out of the tag, whatever the language.
+    private static let retiredVariants: Set<String> = [
+        "lojban", "hakka", "xiang", "bokmal", "nynorsk", "saaho", "arevela", "arevmda", "aaland",
+    ]
+    private static let renamedVariants = ["heploc": "alalc97", "polytoni": "polyton"]
 
     static func canonical(_ tag: String) -> String? {
+        if let combined = combinedTags[tag.lowercased()] { return combined }
         let subtags = tag.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
         guard !subtags.isEmpty,
             subtags.allSatisfy({
@@ -200,23 +211,26 @@ enum BCP47 {
             })
         else { return nil }
 
-        let language = subtags[0]
-        guard language.allSatisfy(\.isLetter), (2...3).contains(language.count) || (5...8).contains(language.count)
+        let rawLanguage = subtags[0]
+        guard rawLanguage.allSatisfy(\.isLetter),
+            (2...3).contains(rawLanguage.count) || (5...8).contains(rawLanguage.count)
         else { return nil }
 
-        var result = [languageAliases[language.lowercased()] ?? language.lowercased()]
+        var language = rawLanguage.lowercased()
+        var script: String?
+        var region: String?
         var index = 1
 
         if index < subtags.count, subtags[index].count == 4, subtags[index].allSatisfy(\.isLetter) {
-            result.append(subtags[index].prefix(1).uppercased() + subtags[index].dropFirst().lowercased())
+            script = subtags[index].prefix(1).uppercased() + subtags[index].dropFirst().lowercased()
             index += 1
         }
         if index < subtags.count {
-            let region = subtags[index]
-            if (region.count == 2 && region.allSatisfy(\.isLetter))
-                || (region.count == 3 && region.allSatisfy(\.isNumber))
+            let candidate = subtags[index]
+            if (candidate.count == 2 && candidate.allSatisfy(\.isLetter))
+                || (candidate.count == 3 && candidate.allSatisfy(\.isNumber))
             {
-                result.append(regionAliases[region.uppercased()] ?? region.uppercased())
+                region = candidate.uppercased()
                 index += 1
             }
         }
@@ -226,7 +240,6 @@ enum BCP47 {
             variants.append(subtags[index].lowercased())
             index += 1
         }
-        result += variants.sorted()
 
         var extensions: [(singleton: String, subtags: [String])] = []
         while index < subtags.count, subtags[index].count == 1, subtags[index].lowercased() != "x" {
@@ -240,17 +253,53 @@ enum BCP47 {
             guard !body.isEmpty else { return nil }
             extensions.append((singleton, body))
         }
+
+        var privateUse: [String] = []
+        if index < subtags.count {
+            guard subtags[index].lowercased() == "x", index + 1 < subtags.count else { return nil }
+            privateUse = subtags[index...].map { $0.lowercased() }
+            index = subtags.count
+        }
+        guard index == subtags.count else { return nil }
+
+        // Aliases. A variant may stand for the language (`zh-hakka`); then the language's own alias, the script's, the
+        // region's (which may depend on the language) and the sign language of the region.
+        for variant in variants {
+            if let replacement = languageOfVariant["\(language)-\(variant)"] {
+                language = replacement
+                variants.removeAll { $0 == variant }
+            }
+        }
+        if variants.contains("aaland"), region == nil { region = "AX" }
+        if variants.contains("hepburn"), variants.contains("heploc") { variants.removeAll { $0 == "hepburn" } }
+        variants = variants.filter { !retiredVariants.contains($0) }.map { renamedVariants[$0] ?? $0 }
+
+        if let alias = BCP47AliasData.languages[language] {
+            let parts = alias.split(separator: "-").map(String.init)
+            language = parts[0]
+            for part in parts.dropFirst() {
+                if part.count == 4 { script = script ?? part } else { region = region ?? part }
+            }
+        }
+        if let current = script, let replacement = BCP47AliasData.scripts[current] { script = replacement }
+        if let current = region {
+            region = BCP47AliasData.regionByLanguage[current]?[language] ?? BCP47AliasData.regions[current] ?? current
+        }
+        if language == "sgn", let current = region, let signLanguage = BCP47AliasData.signLanguages[current] {
+            language = signLanguage
+            region = nil
+        }
+
+        var result = [language]
+        if let script { result.append(script) }
+        if let region { result.append(region) }
+        result += variants.sorted()
         for ext in extensions.sorted(by: { $0.singleton < $1.singleton }) {
             result.append(ext.singleton)
             result += ext.subtags
         }
-
-        if index < subtags.count {
-            guard subtags[index].lowercased() == "x", index + 1 < subtags.count else { return nil }
-            result += subtags[index...].map { $0.lowercased() }
-            index = subtags.count
-        }
-        return index == subtags.count ? result.joined(separator: "-") : nil
+        result += privateUse
+        return result.joined(separator: "-")
     }
 
     private static func isVariant(_ subtag: String) -> Bool {

@@ -10,7 +10,15 @@
 //              bestMatch, missing (runs `t` and also records every call the `missingKeyHandler` receives),
 //              fixedT (options = { fixed: { lng | lngs, ns, keyPrefix }, call: {...} }),
 //              dir (key = language or null), resolvedLanguage (options.changeTo changes the language first),
-//              hasLoadedNamespace (key = namespace, options = { lng })
+//              hasLoadedNamespace (key = namespace, options = { lng }),
+//              getDataByLanguage (key = language),
+//              session (key = null, options = { steps: [[on, method, args, as?], ...] }: runs the steps against the
+//                       instances by name (`i18n` is the one created from `init`, `as` names what `cloneInstance`
+//                       makes) and answers with one entry per step: what a read method returned, else null.
+//                       Methods: t, exists, language, languages, resolvedLanguage, changeLanguage, addResource,
+//                       addResources, addResourceBundle, removeResourceBundle, getResource, getResourceBundle,
+//                       hasResourceBundle, getDataByLanguage, hasLanguageSomeTranslations, toJSON, hydrate,
+//                       cloneInstance, usePostProcessor)
 //
 // Handler options can be given by name: see `__handlers`.
 //
@@ -64,6 +72,48 @@ function __withHandlers(options) {
     return options;
 }
 
+// Post-processors a session registers by name after the instance exists (see the `session` kind).
+var __lateProcessors = {
+    angle: function (value) { return '<' + value + '>'; },
+    question: function (value) { return value + '?'; }
+};
+
+function __session(instance, steps) {
+    var instances = { i18n: instance };
+    return steps.map(function (step) {
+        var target = instances[step[0]];
+        if (!target) throw new Error('no instance ' + step[0]);
+        var method = step[1];
+        var args = __clone(step[2]) || [];
+        var result;
+        switch (method) {
+            case 'cloneInstance': instances[step[3]] = target.cloneInstance(__withHandlers(args[0]) || {}); break;
+            case 't': result = target.t(args[0], __withHandlers(args[1]) || {}); break;
+            case 'exists': result = target.exists(args[0], args[1] || {}); break;
+            case 'language': result = target.language; break;
+            case 'languages': result = target.languages; break;
+            case 'resolvedLanguage': result = target.resolvedLanguage; break;
+            case 'changeLanguage': target.changeLanguage(args[0]); break;
+            case 'addResource': target.addResource(args[0], args[1], args[2], args[3]); break;
+            case 'addResources': target.addResources(args[0], args[1], args[2]); break;
+            case 'addResourceBundle': target.addResourceBundle(args[0], args[1], args[2], args[3], args[4]); break;
+            case 'removeResourceBundle': target.removeResourceBundle(args[0], args[1]); break;
+            case 'getResource': result = target.getResource(args[0], args[1], args[2]); break;
+            case 'getResourceBundle': result = target.getResourceBundle(args[0], args[1]); break;
+            case 'hasResourceBundle': result = target.hasResourceBundle(args[0], args[1]); break;
+            case 'getDataByLanguage': result = target.getDataByLanguage(args[0]); break;
+            case 'hasLanguageSomeTranslations': result = target.store.hasLanguageSomeTranslations(args[0]); break;
+            case 'toJSON': result = target.store.toJSON(); break;
+            case 'hydrate': target.hydrate(args[0], args[1]); break;
+            case 'usePostProcessor':
+                target.use({ type: 'postProcessor', name: args[0], process: __lateProcessors[args[0]] || __processors[args[0]] });
+                break;
+            default: throw new Error('unknown session method ' + method);
+        }
+        return result === undefined ? null : __clone(result);
+    });
+}
+
 function __clone(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -105,6 +155,10 @@ function __call(instance, kind, key, options) {
             return instance.resolvedLanguage === undefined ? null : instance.resolvedLanguage;
         case 'hasLoadedNamespace':
             return instance.hasLoadedNamespace(key, __clone(options) || {});
+        case 'getDataByLanguage':
+            return instance.getDataByLanguage(key);
+        case 'session':
+            return __session(instance, (options || {}).steps || []);
         case 'pluralSuffix':
             // key = language, options = { count, ordinal }
             return instance.services.pluralResolver.getSuffix(key, (options || {}).count, __clone(options) || {});
