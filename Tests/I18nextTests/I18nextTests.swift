@@ -309,7 +309,8 @@ struct ResourceTests {
 
         store.removeResourceBundle(lng: "en", ns: "t")
         #expect(!store.hasResourceBundle(lng: "en", ns: "t"))
-        #expect(store.languages.isEmpty)
+        // The language stays, empty, as in i18next.
+        #expect(store.namespaces(lng: "en").isEmpty)
     }
 
     @Test func nestedKeysWinOverFlatOnes() {

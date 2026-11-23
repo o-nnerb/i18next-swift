@@ -12,6 +12,13 @@ public final class ResourceStore: Sendable {
     private let storage: Protected<Resources>
     /// Told about every change, after it was made.
     private let onChange: (@Sendable (I18nextEvent) -> Void)?
+    /// Instances that share this store (clones), told about every change too. Held weakly: a clone that goes away
+    /// leaves nothing behind.
+    private let sharers = Protected<[WeakHub]>([])
+
+    private struct WeakHub: Sendable {
+        weak var hub: EventHub?
+    }
 
     public convenience init(
         data: Resources = [:],
@@ -31,6 +38,23 @@ public final class ResourceStore: Sendable {
         self.keySeparator = keySeparator
         self.ignoreJSONStructure = ignoreJSONStructure
         self.onChange = onChange
+    }
+
+    /// Reports this store's changes to `hub` as well, for as long as `hub` lives.
+    func share(with hub: EventHub) {
+        sharers.withLock { hubs in
+            hubs.removeAll { $0.hub == nil }
+            hubs.append(WeakHub(hub: hub))
+        }
+    }
+
+    private func changed(_ event: I18nextEvent) {
+        onChange?(event)
+        let targets = sharers.withLock { hubs in
+            hubs.removeAll { $0.hub == nil }
+            return hubs.compactMap(\.hub)
+        }
+        for hub in targets { hub.emit(event) }
     }
 
     // MARK: Reading
@@ -97,16 +121,27 @@ public final class ResourceStore: Sendable {
         getResourceBundle(lng: lng, ns: ns) != nil
     }
 
-    /// Whether `lng` has at least one non-empty bundle.
+    /// Every namespace stored for `lng` with its bundle, or `nil` when the language has none (i18next's
+    /// `getDataByLanguage`). The result is a copy: changing the store afterwards doesn't change it.
+    public func getDataByLanguage(lng: String) -> [String: JSONValue]? {
+        storage.withLock { $0[lng] }
+    }
+
+    /// Everything the store holds, as a copy (i18next's `toJSON`).
+    public var data: Resources {
+        storage.withLock { $0 }
+    }
+
+    /// Whether `lng` has at least one non-empty bundle: an object or array with entries, or a non-empty string.
+    /// (Like i18next, a bare number or boolean has no entries, so it doesn't count.)
     public func hasLanguageSomeTranslations(lng: String) -> Bool {
         storage.withLock { data in
             data[lng]?.values.contains { bundle in
                 switch bundle {
                 case .object(let fields): !fields.isEmpty
                 case .array(let items): !items.isEmpty
-                case .null, .bool(false), .string(""): false
-                case .number(let number): number != 0 && !number.isNaN
-                default: true
+                case .string(let text): !text.isEmpty
+                default: false
                 }
             } ?? false
         }
@@ -132,11 +167,12 @@ public final class ResourceStore: Sendable {
         overwrite: Bool = false
     ) {
         setResource(lng: lng, ns: ns, key: key, value: value, deep: deep, overwrite: overwrite)
-        onChange?(.added(language: lng, namespace: ns))
+        changed(.added(language: lng, namespace: ns))
     }
 
     private func setResource(lng: String, ns: String, key: String, value: JSONValue, deep: Bool, overwrite: Bool) {
-        let path = splitKey(key)
+        // An empty key addresses the whole bundle, which is replaced (i18next skips the key part of the path).
+        let path = key.isEmpty ? [] : splitKey(key)
         storage.withLock { resources in
             let bundle = resources[lng]?[ns] ?? .object([:])
             let updated: JSONValue
@@ -153,7 +189,7 @@ public final class ResourceStore: Sendable {
         for (key, value) in resources {
             setResource(lng: lng, ns: ns, key: key, value: value, deep: false, overwrite: false)
         }
-        onChange?(.added(language: lng, namespace: ns))
+        changed(.added(language: lng, namespace: ns))
     }
 
     public func addResourceBundle(
@@ -173,21 +209,27 @@ public final class ResourceStore: Sendable {
             }
             all[lng, default: [:]][ns] = merged
         }
-        onChange?(.added(language: lng, namespace: ns))
+        changed(.added(language: lng, namespace: ns))
     }
 
     /// Replaces the bundle outright (used when reloading from a backend).
     public func setResourceBundle(lng: String, ns: String, resources: JSONValue) {
         storage.withLock { $0[lng, default: [:]][ns] = resources }
-        onChange?(.added(language: lng, namespace: ns))
+        changed(.added(language: lng, namespace: ns))
+    }
+
+    /// Replaces everything the store holds, without reporting changes (i18next's `store.data = …`, used by
+    /// ``I18next/hydrate(_:lng:)``).
+    func replaceAll(with resources: Resources) {
+        storage.withLock { $0 = resources }
     }
 
     public func removeResourceBundle(lng: String, ns: String) {
         storage.withLock { all in
+            // The language stays, empty, as in i18next (`getDataByLanguage` then answers `{}`).
             all[lng]?[ns] = nil
-            if all[lng]?.isEmpty == true { all[lng] = nil }
         }
-        onChange?(.removed(language: lng, namespace: ns))
+        changed(.removed(language: lng, namespace: ns))
     }
 
     // MARK: Helpers

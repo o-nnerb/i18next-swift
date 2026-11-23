@@ -87,7 +87,8 @@ extension I18next {
         return await connector.load(
             languages: languages ?? languagesToLoad(for: language),
             namespaces: namespaces ?? namespacesToLoad(),
-            force: true
+            force: true,
+            onEvent: { [hub] in hub.emit($0) }
         )
     }
 
@@ -95,7 +96,7 @@ extension I18next {
 
     private func load(languages: [String], namespaces: [String]) async -> LoadReport {
         guard let connector else { return LoadReport() }
-        return await connector.load(languages: languages, namespaces: namespaces)
+        return await connector.load(languages: languages, namespaces: namespaces) { [hub] in hub.emit($0) }
     }
 
     func languagesToLoad(for code: String?) -> [String] {

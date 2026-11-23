@@ -26,22 +26,21 @@ final class BackendConnector: Sendable {
     private let options: BackendOptions
     private let readSlots: AsyncSemaphore
     private let state = Protected(State())
-    private let onEvent: @Sendable (I18nextEvent) -> Void
 
-    init(
-        backend: any Backend,
-        store: ResourceStore,
-        options: BackendOptions,
-        onEvent: @escaping @Sendable (I18nextEvent) -> Void = { _ in }
-    ) {
+    init(backend: any Backend, store: ResourceStore, options: BackendOptions) {
         self.backend = backend
         self.store = store
         self.options = options
-        self.onEvent = onEvent
         self.readSlots = AsyncSemaphore(permits: max(1, options.maxParallelReads))
     }
 
-    func load(languages: [String], namespaces: [String], force: Bool = false) async -> LoadReport {
+    /// Every caller that asked for a bundle is told how it went (`onEvent`), also when another caller's read served it.
+    func load(
+        languages: [String],
+        namespaces: [String],
+        force: Bool = false,
+        onEvent: @Sendable (I18nextEvent) -> Void
+    ) async -> LoadReport {
         var seen: Set<ResourceKey> = []
         var keys: [ResourceKey] = []
         for language in languages {

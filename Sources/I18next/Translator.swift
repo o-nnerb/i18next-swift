@@ -430,7 +430,7 @@ extension I18next {
         let names = opt.postProcess ?? options.postProcess
         guard !names.isEmpty else { return text }
 
-        let processors = state.withLock { $0.postProcessors }
+        let processors = registeredPostProcessors()
         let context = PostProcessContext(
             keys: keys,
             language: opt.lng ?? language ?? resolved.usedLng,
@@ -452,7 +452,7 @@ extension I18next {
         let interpolator = makeInterpolator(for: opt)
         let escape = opt.escapeValue ?? options.interpolation.escapeValue
         let lng = opt.lng ?? language ?? usedLng
-        let formats = state.withLock { $0.formats }
+        let formats = registeredFormats()
         let callData = Interpolator.data(for: opt)
         let format: Interpolator.Format = { name, value, arguments, variable in
             guard let handler = formats[name], value != .null else { return nil }

@@ -154,6 +154,9 @@ public final class I18next: Sendable {
         var isInitialized: Bool
         /// Bumped by every language change so an older, slower change can't override a newer one.
         var languageChangeToken = 0
+        /// ``I18next/hydrate(_:lng:)`` seeds the store and the language once each.
+        var hydratedStore = false
+        var hydratedLanguage = false
     }
 
     public let options: Options
@@ -163,28 +166,21 @@ public final class I18next: Sendable {
     let state: Protected<State>
     let connector: BackendConnector?
     let hub: EventHub
+    /// The instance this one was cloned from. Formats and post-processors it registers stay visible here.
+    let parent: I18next?
 
-    public init(_ options: Options = Options()) {
-        self.options = options
+    /// Whether ``cloneInstance(forkResourceStore:_:)`` made this instance (i18next's `options.isClone`).
+    public var isClone: Bool { parent != nil }
+
+    public convenience init(_ options: Options = Options()) {
         let hub = EventHub()
-        self.hub = hub
         let store = ResourceStore(
             data: options.resources,
             keySeparator: options.keySeparator,
             ignoreJSONStructure: true,
             onChange: { hub.emit($0) }
         )
-        self.store = store
-        self.plurals = PluralResolver(separator: options.pluralSeparator)
-        let languageUtils = LanguageUtils(
-            fallbackLng: options.fallbackLng,
-            load: options.load,
-            lowerCaseLng: options.lowerCaseLng,
-            cleanCode: options.cleanCode,
-            supportedLngs: options.supportedLngs.map { $0.contains("cimode") ? $0 : $0 + ["cimode"] },
-            nonExplicitSupportedLngs: options.nonExplicitSupportedLngs
-        )
-        self.languageUtils = languageUtils
+        let languageUtils = Self.makeLanguageUtils(options)
 
         var namespaces = options.ns ?? options.defaultNS
         for ns in options.defaultNS where !namespaces.contains(ns) { namespaces.append(ns) }
@@ -197,20 +193,50 @@ public final class I18next: Sendable {
         )
         for (name, format) in options.formats { state.formats[Self.formatName(name)] = format }
         state.postProcessors = options.postProcessors
-        self.state = Protected(state)
 
-        self.connector =
-            usesBackend
-            ? options.backend.map {
-                BackendConnector(
-                    backend: $0,
-                    store: store,
-                    options: options.backendOptions,
-                    onEvent: { hub.emit($0) }
-                )
-            }
-            : nil
+        self.init(
+            options: options,
+            hub: hub,
+            store: store,
+            connector: usesBackend
+                ? options.backend.map {
+                    BackendConnector(backend: $0, store: store, options: options.backendOptions)
+                } : nil,
+            languageUtils: languageUtils,
+            state: state,
+            parent: nil
+        )
+    }
+
+    init(
+        options: Options,
+        hub: EventHub,
+        store: ResourceStore,
+        connector: BackendConnector?,
+        languageUtils: LanguageUtils,
+        state: State,
+        parent: I18next?
+    ) {
+        self.options = options
+        self.hub = hub
+        self.store = store
+        self.connector = connector
+        self.languageUtils = languageUtils
+        self.plurals = PluralResolver(separator: options.pluralSeparator)
+        self.state = Protected(state)
+        self.parent = parent
         refreshResolvedLanguage()
+    }
+
+    static func makeLanguageUtils(_ options: Options) -> LanguageUtils {
+        LanguageUtils(
+            fallbackLng: options.fallbackLng,
+            load: options.load,
+            lowerCaseLng: options.lowerCaseLng,
+            cleanCode: options.cleanCode,
+            supportedLngs: options.supportedLngs.map { $0.contains("cimode") ? $0 : $0 + ["cimode"] },
+            nonExplicitSupportedLngs: options.nonExplicitSupportedLngs
+        )
     }
 
     public convenience init(configure: (inout Options) -> Void) {
@@ -318,6 +344,13 @@ public final class I18next: Sendable {
         state.withLock { $0.formats[Self.formatName(name)] = format }
     }
 
+    /// The formats this instance can use: its own over those of the instance it was cloned from.
+    func registeredFormats() -> [String: Format] {
+        var merged = parent?.registeredFormats() ?? [:]
+        for (name, format) in state.withLock({ $0.formats }) { merged[name] = format }
+        return merged
+    }
+
     /// Format names are case-insensitive and ignore surrounding whitespace.
     static func formatName(_ name: String) -> String {
         Interpolator.trimmed(name).lowercased()
@@ -329,6 +362,13 @@ public final class I18next: Sendable {
     /// ``TranslationOptions/postProcess``.
     public func addPostProcessor(_ name: String, _ processor: @escaping PostProcessor) {
         state.withLock { $0.postProcessors[name] = processor }
+    }
+
+    /// The post-processors this instance can use: its own over those of the instance it was cloned from.
+    func registeredPostProcessors() -> [String: PostProcessor] {
+        var merged = parent?.registeredPostProcessors() ?? [:]
+        for (name, processor) in state.withLock({ $0.postProcessors }) { merged[name] = processor }
+        return merged
     }
 
     // MARK: Translation
@@ -418,5 +458,10 @@ public final class I18next: Sendable {
 
     public func hasResourceBundle(lng: String, ns: String) -> Bool {
         store.hasResourceBundle(lng: lng, ns: ns)
+    }
+
+    /// Every namespace stored for `lng`, or `nil` when there is none (i18next's `getDataByLanguage`).
+    public func getDataByLanguage(lng: String) -> [String: JSONValue]? {
+        store.getDataByLanguage(lng: lng)
     }
 }
