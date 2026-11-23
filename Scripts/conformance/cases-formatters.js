@@ -201,6 +201,27 @@ formatSuite('format/relativetime', ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP',
     '{{n, relativetime(range: weeks)}}'
 ], [{ n: -1 }, { n: 1 }, { n: 0 }, { n: -3 }, { n: 3 }, { n: 2.5 }]);
 
+// The locales relativetime has data for (CLDRRelativeTimeData), with the plural categories and numbers that exercise them.
+formatSuiteChunked('format/relativetime[locales]', [
+    'ar-EG', 'bg-BG', 'bn-BD', 'ca-ES', 'cs-CZ', 'da-DK', 'el-GR', 'en-AU', 'en-GB', 'en-IN', 'es-MX', 'es-US', 'fa-IR', 'fi-FI', 'fr-CA', 'he-IL',
+    'hi-IN', 'hr-HR', 'hu-HU', 'id-ID', 'it-IT', 'ko-KR', 'ms-MY', 'nb-NO', 'nl-NL', 'no-NO', 'pl-PL', 'pt-PT', 'ro-RO',
+    'ru-RU', 'sk-SK', 'sl-SI', 'sr-RS', 'sv-SE', 'th-TH', 'tr-TR', 'uk-UA', 'vi-VN', 'zh-CN', 'zh-TW', 'zh-Hant-HK', 'ja-JP', 'en-US'
+], [
+    '{{n, relativetime(second)}}',
+    '{{n, relativetime(range: minute; style: short)}}',
+    '{{n, relativetime(range: hour; style: narrow)}}',
+    '{{n, relativetime(range: day; numeric: auto)}}',
+    '{{n, relativetime(range: week; numeric: auto; style: short)}}',
+    '{{n, relativetime(range: quarter)}}',
+    '{{n, relativetime(range: quarter; numeric: auto; style: narrow)}}',
+    '{{n, relativetime(range: year; numeric: auto)}}'
+], [{ n: -2 }, { n: 2 }, { n: 21 }, { n: 1.5 }, { n: -0.5 }]);
+
+// Locales without data: Apple's RelativeDateTimeFormatter answers whole numbers, other platforms leave the value.
+formatSuiteChunked('format/relativetime[other locales]', ['sw-KE', 'af-ZA', 'is-IS'], [
+    '{{n, relativetime(day)}}', '{{n, relativetime(range: week; numeric: auto)}}'
+], [{ n: -3 }, { n: 1 }]);
+
 // MARK: list
 
 formatSuite('format/list', ['en-US', 'pt-BR', 'de-DE', 'fr-FR', 'ja-JP', 'es-ES'], [

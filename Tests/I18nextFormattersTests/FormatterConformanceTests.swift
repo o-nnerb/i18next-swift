@@ -85,14 +85,6 @@ private func knownDifference(for scenario: FormatterCase) -> String? {
     if template.contains("style: unit"), let unit = scenario.unit, unsupportedUnits.contains(unit) {
         return "Foundation has no `Unit` that formats like Intl's \(unit)"
     }
-    if template.contains("relativetime") {
-        if template.contains("quarter") {
-            return "RelativeDateTimeFormatter has no quarter unit; the value is left as written"
-        }
-        if scenario.variables["n"] == 2.5 {
-            return "RelativeDateTimeFormatter takes whole numbers; Intl prints \"in 2.5 days\""
-        }
-    }
     return nil
 }
 

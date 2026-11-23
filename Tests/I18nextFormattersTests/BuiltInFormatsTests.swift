@@ -55,19 +55,37 @@ struct BuiltInFormatsTests {
         #expect(i18n.t("d", .init(variables: ["when": "2023-11-14T22:13:20Z"])) == "November 14, 2023")  // ISO text
     }
 
-    #if canImport(Darwin)
-    @Test func relativeTimes() {
-        let i18n = makeI18n(["r": "{{n, relativetime(day)}}", "a": "{{n, relativetime(range: day; numeric: auto)}}"])
+    @Test func relativeTimesComeFromTheLocaleDataOnEveryPlatform() {
+        let i18n = makeI18n([
+            "r": "{{n, relativetime(day)}}", "a": "{{n, relativetime(range: day; numeric: auto)}}",
+            "q": "{{n, relativetime(quarter)}}", "s": "{{n, relativetime(range: week; style: short)}}",
+        ])
         #expect(i18n.t("r", .init(variables: ["n": -3])) == "3 days ago")
         #expect(i18n.t("r", .init(variables: ["n": 1])) == "in 1 day")
+        #expect(i18n.t("r", .init(variables: ["n": 2.5])) == "in 2.5 days")
         #expect(i18n.t("a", .init(variables: ["n": 1])) == "tomorrow")
+        #expect(i18n.t("q", .init(variables: ["n": 2])) == "in 2 quarters")
+        #expect(i18n.t("s", .init(variables: ["n": -1])) == "1 wk. ago")
+
+        let ru = makeI18n(lng: "ru", ["r": "{{n, relativetime(day)}}"])
+        #expect(ru.t("r", .init(variables: ["n": 5])) == "через 5 дней")
+        #expect(ru.t("r", .init(variables: ["n": 2.5])) == "через 2,5 дня")
+
+        // `es-MX` has data of its own, `es-AR` reads Latin American Spanish's.
+        let mx = makeI18n(lng: "es-MX", ["m": "{{n, relativetime(range: minute; style: short)}}"])
+        #expect(mx.t("m", .init(variables: ["n": 2])) == "en 2 min")
     }
-    #else
-    @Test func relativeTimesAreLeftAsTheyAreWithoutAppleFoundation() {
-        let i18n = makeI18n(["r": "{{n, relativetime(day)}}"])
+
+    @Test func relativeTimesOfLocalesWithoutDataNeedAppleFoundation() {
+        let i18n = makeI18n(lng: "sw-KE", ["r": "{{n, relativetime(day)}}", "q": "{{n, relativetime(quarter)}}"])
+        #if canImport(Darwin)
+        #expect(i18n.t("r", .init(variables: ["n": -3])) != "-3")  // Apple's RelativeDateTimeFormatter
+        #else
         #expect(i18n.t("r", .init(variables: ["n": -3])) == "-3")
+        #endif
+        #expect(i18n.t("q", .init(variables: ["n": 2])) == "2")  // no quarters, and no data
+        #expect(i18n.t("r", .init(variables: ["n": 2.5])) == "2.5")  // whole numbers only without data
     }
-    #endif
 
     @Test func lists() {
         let i18n = makeI18n(["l": "{{items, list}}", "o": "{{items, list(type: disjunction)}}"])
@@ -125,9 +143,9 @@ struct BuiltInFormatsTests {
 
     @Test func valuesAFormatterRefusesAreLeftAsTheyAre() {
         let i18n = makeI18n([
-            "q": "{{n, relativetime(quarter)}}", "l": "{{items, list}}", "x": "{{v, number(style: weird)}}",
+            "q": "{{n, relativetime(century)}}", "l": "{{items, list}}", "x": "{{v, number(style: weird)}}",
         ])
-        #expect(i18n.t("q", .init(variables: ["n": 2])) == "2")  // no quarter unit in Foundation
+        #expect(i18n.t("q", .init(variables: ["n": 2])) == "2")  // not a unit of Intl.RelativeTimeFormat
         #expect(i18n.t("l", .init(variables: ["items": [1, 2]])) == "1,2")  // Intl.ListFormat wants strings
         #expect(i18n.t("x", .init(variables: ["v": 7])) == "7")  // an invalid option is a RangeError
     }
