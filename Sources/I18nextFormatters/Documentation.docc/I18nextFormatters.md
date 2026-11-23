@@ -19,7 +19,7 @@ The formatters i18next ships (`number`, `currency`, `datetime`, `relativetime`, 
 ## Overview
 
 `I18next` keeps formatting out of its core so that it needs nothing beyond `FoundationEssentials`. This module adds the
-formatters on top, using the system's `FormatStyle`, `DateFormatter` and `RelativeDateTimeFormatter`. It links the full
+formatters on top, using the system's `FormatStyle`, `Measurement`, `DateFormatter` and `RelativeDateTimeFormatter`. It links the full
 Foundation on Linux, which the core does not.
 
 ```swift
@@ -55,20 +55,27 @@ i18n.t("price", .init(variables: [
 ```
 
 The options are `Intl`'s: `minimumFractionDigits`, `maximumFractionDigits`, `minimumIntegerDigits`,
-`maximumSignificantDigits`, `useGrouping`, `signDisplay`, `notation`, `style`, `currency`, `currencyDisplay` for
-numbers; `dateStyle`, `timeStyle`, `timeZone`, `hour12` and the component options for dates; `numeric`, `style` and
-`range` for relative times; `type` and `style` for lists.
+`maximumSignificantDigits`, `useGrouping`, `signDisplay`, `notation`, `style`, `currency`, `currencyDisplay`, `unit`
+and `unitDisplay` for numbers; `dateStyle`, `timeStyle`, `timeZone`, `timeZoneName`, `hour12` and the component options
+for dates; `numeric`, `style` and `range` for relative times; `type` and `style` for lists.
 
 ### What differs from `Intl`
 
-The behavior was checked against i18next 27.2.2 on thousands of values, and these are the known gaps:
+The behavior was checked against i18next 27.2.2 on thousands of values (4,689 scenarios, on Apple platforms), and these
+are the known gaps:
 
-- Numbers: `unit` style is not supported; `compact` notation uses the short names only.
+- Numbers: `compact` notation uses the short names only. `style: unit` goes through Foundation's `Measurement`, which has
+  no unit for `day`, `week`, `month`, `year`, `percent`, `mile-scandinavian`, `mile-per-gallon`, compounds such as
+  `kilometer-per-day`, and does not translate `millisecond`, `microsecond` and `nanosecond` for every locale; those
+  are left as written. The others (length, mass, volume, temperature, speed, information storage, `second` to
+  `hour`, …) match `Intl`.
 - Dates: a JavaScript number is milliseconds since the epoch, as in i18next. Text is also read as an ISO 8601 date,
-  which JSON has no type for. Time zone *names* can differ (`GMT` where `Intl` says `UTC`).
-- Relative times need whole numbers and have no `quarter` unit, and exist only on Apple platforms: swift-corelibs-foundation
-  has no `RelativeDateTimeFormatter`, so elsewhere the value is left as it is.
-- Lists have no `unit` type, and their items must be strings.
+  which JSON has no type for. `UTC`, `GMT` and `Etc/UTC` are one zone named "UTC", as in `Intl`; other zone names
+  (`timeZoneName`, `timeStyle: full`) are Foundation's, and matched `Intl` in every fixture on this macOS.
+- Relative times need whole numbers (`Intl` prints "in 2.5 days") and have no `quarter` unit, and exist only on Apple
+  platforms: swift-corelibs-foundation has no `RelativeDateTimeFormatter`, so elsewhere the value is left as it is.
+- Lists: `unit` lists come from a table of patterns (`CLDRListPatternData`) read out of the ICU on macOS, so they work
+  on every platform; their items must be strings.
 
 A value a formatter can't handle is left as it was, as in i18next. Results can differ between platforms and OS
 releases wherever their ICU data does.

@@ -67,8 +67,9 @@ options.formats = BuiltInFormats.all   // or: i18n.addBuiltInFormats()
 // "Total: {{amount, currency(EUR)}}"  →  "Total: €1,234.50"
 ```
 
-They are checked against i18next on 1,814 values on Apple platforms; the documented gaps are quarters and fractional
-relative times, `unit` lists and number styles, and time zone display names.
+They are checked against i18next on 4,689 values on Apple platforms; the documented gaps are quarters and fractional
+relative times (and relative times at all outside Apple platforms), and the number units Foundation has no `Unit` for
+(`day`, `week`, `month`, `year`, `percent`, per-compounds). `unit` lists and time zone names match.
 
 ## Conformance
 

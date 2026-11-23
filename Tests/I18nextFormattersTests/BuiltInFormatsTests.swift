@@ -76,6 +76,53 @@ struct BuiltInFormatsTests {
         #expect(i18n.t("o", .init(variables: ["items": items])) == "a, b, or c")
     }
 
+    @Test func unitListsJoinWithTheLocalesUnitPatterns() {
+        let items: JSONValue = ["5 km", "3 m", "2 cm"]
+        let en = makeI18n([
+            "l": "{{items, list(type: unit)}}", "n": "{{items, list(type: unit; style: narrow)}}",
+        ])
+        #expect(en.t("l", .init(variables: ["items": items])) == "5 km, 3 m, 2 cm")
+        #expect(en.t("n", .init(variables: ["items": items])) == "5 km 3 m 2 cm")
+        #expect(en.t("l", .init(variables: ["items": ["a"]])) == "a")
+        #expect(en.t("l", .init(variables: ["items": []])) == "")
+
+        let pt = makeI18n(lng: "pt-BR", ["l": "{{items, list(type: unit)}}"])
+        #expect(pt.t("l", .init(variables: ["items": ["a", "b"]])) == "a e b")
+        #expect(pt.t("l", .init(variables: ["items": ["a", "b", "c"]])) == "a, b e c")
+    }
+
+    @Test func unitListsIsolateItemsThatReadAgainstTheLocale() {
+        let ar = makeI18n(lng: "ar", ["l": "{{items, list(type: unit; style: short)}}"])
+        #expect(ar.t("l", .init(variables: ["items": ["a", "b"]])) == "\u{2068}a\u{2069} \u{2068}b\u{2069}")
+    }
+
+    #if canImport(Darwin)
+    @Test func numbersWithUnits() {
+        let i18n = makeI18n([
+            "s": "{{v, number(style: unit; unit: kilometer-per-hour)}}",
+            "l": "{{v, number(style: unit; unit: liter; unitDisplay: long)}}",
+            "d": "{{v, number(style: unit; unit: day)}}", "p": "{{v, number(style: unit; unit: parsec)}}",
+            "m": "{{v, number(style: unit)}}",
+        ])
+        #expect(i18n.t("s", .init(variables: ["v": 88.5])) == "88.5 km/h")
+        #expect(i18n.t("l", .init(variables: ["v": 2])) == "2 liters")
+        #expect(i18n.t("l", .init(variables: ["v": 1])) == "1 liter")
+        #expect(i18n.t("d", .init(variables: ["v": 3])) == "3")  // no Foundation unit for days: left as written
+        #expect(i18n.t("p", .init(variables: ["v": 3])) == "3")  // not a sanctioned unit
+        #expect(i18n.t("m", .init(variables: ["v": 3])) == "3")  // no unit given
+    }
+
+    @Test func zoneNamesFollowIntl() {
+        let i18n = makeI18n([
+            "s": "{{d, datetime(hour: numeric; minute: numeric; timeZoneName: short; timeZone: UTC)}}",
+            "l": "{{d, datetime(timeZoneName: long; timeZone: Europe/Berlin)}}",
+        ])
+        // A plain or narrow no-break space before PM, depending on the ICU
+        #expect(i18n.t("s", .init(variables: ["d": 1_700_000_000_000])).hasSuffix("PM UTC"))
+        #expect(i18n.t("l", .init(variables: ["d": 1_700_000_000_000])) == "11/14/2023, Central European Standard Time")
+    }
+    #endif
+
     @Test func valuesAFormatterRefusesAreLeftAsTheyAre() {
         let i18n = makeI18n([
             "q": "{{n, relativetime(quarter)}}", "l": "{{items, list}}", "x": "{{v, number(style: weird)}}",
