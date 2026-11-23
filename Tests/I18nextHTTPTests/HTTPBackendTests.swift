@@ -28,6 +28,8 @@ final class TestServer: @unchecked Sendable {
     private var recorded: [Request] = []
     private let handler: @Sendable (Request, Int) -> Response  // request, 1-based count of requests to that path
     private var listener: Int32 = -1
+    private var stopped = false
+    private let finished = DispatchSemaphore(value: 0)
     private(set) var port: UInt16 = 0
 
     init(handler: @escaping @Sendable (Request, Int) -> Response) throws {
@@ -35,9 +37,6 @@ final class TestServer: @unchecked Sendable {
 
         listener = socket(AF_INET, SOCK_STREAM, 0)
         guard listener >= 0 else { throw POSIXError(.EIO) }
-        var yes: Int32 = 1
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
-
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
@@ -56,13 +55,18 @@ final class TestServer: @unchecked Sendable {
         }
         port = UInt16(bigEndian: assigned.sin_port)
 
+        // The loop polls instead of blocking in `accept`, so `stop` can end it and have the loop (not another thread)
+        // close the listener: a socket closed under a blocked `accept` can keep answering on its port.
         let fd = listener
         Thread.detachNewThread { [self] in
-            while true {
+            while !lock.withLock({ stopped }) {
+                var event = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                guard poll(&event, 1, 20) > 0 else { continue }
                 let client = accept(fd, nil, nil)
-                if client < 0 { return }
-                DispatchQueue.global().async { self.serve(client) }
+                if client >= 0 { DispatchQueue.global().async { self.serve(client) } }
             }
+            close(fd)
+            finished.signal()
         }
     }
 
@@ -71,9 +75,10 @@ final class TestServer: @unchecked Sendable {
     var requests: [Request] { lock.withLock { recorded } }
     func count(of path: String) -> Int { requests.filter { $0.path == path }.count }
 
+    /// Returns once nothing listens on the port any more.
     func stop() {
-        shutdown(listener, SHUT_RDWR)
-        close(listener)
+        lock.withLock { stopped = true }
+        finished.wait()
     }
 
     private func serve(_ client: Int32) {
@@ -379,20 +384,30 @@ struct HTTPBackendCreateTests {
         #expect(server.requests.isEmpty)
     }
 
-    /// What `create` throws for a server that always answers `status`, as text, or "no error".
-    private func outcome(for status: Int) async throws -> (thrown: String, requests: Int) {
-        let server = try TestServer { _, _ in .init(status: status, body: "") }
+    /// What `create` throws when the server answers `status`. The status travels in the namespace (`s408`), so the
+    /// answer is the same whichever test server receives the request.
+    private func outcome(for status: Int) async throws -> (thrown: String, port: UInt16) {
+        let server = try TestServer { request, _ in
+            let code = request.path.split(separator: "/").last.flatMap { Int($0.dropFirst()) } ?? 500
+            return .init(status: code, body: "")
+        }
         defer { server.stop() }
         let backend = try HTTPBackend(baseURL: server.baseURL)
         do {
-            try await backend.create(languages: ["pt"], namespace: "t", key: "k", fallbackValue: nil, isUpdate: false)
-            return ("no error", server.requests.count)
+            try await backend.create(
+                languages: ["pt"],
+                namespace: "s\(status)",
+                key: "k",
+                fallbackValue: nil,
+                isUpdate: false
+            )
+            return ("no error", server.port)
         } catch let error as HTTPTransientError {
-            return ("transient \(error.statusCode.map(String.init) ?? "nil")", server.requests.count)
+            return ("transient \(error.statusCode.map(String.init) ?? "nil")", server.port)
         } catch HTTPBackendError.unexpectedStatus(let code) {
-            return ("unexpected \(code)", server.requests.count)
+            return ("unexpected \(code)", server.port)
         } catch {
-            return ("other \(error)", server.requests.count)
+            return ("other \(error)", server.port)
         }
     }
 
@@ -403,7 +418,7 @@ struct HTTPBackendCreateTests {
     ])
     func statusesAreMapped(status: Int, expected: String) async throws {
         let result = try await outcome(for: status)
-        #expect(result.thrown == expected, "status \(status), \(result.requests) request(s) reached the server")
+        #expect(result.thrown == expected, "status \(status), server on port \(result.port)")
     }
 
     @Test func rejectsUnsafeLanguageAndNamespace() async throws {
