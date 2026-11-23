@@ -129,7 +129,11 @@ final class TestServer: Sendable {
             let payload = ByteBuffer(string: response.body)
             var headers = HTTPHeaders()
             headers.add(name: "Content-Type", value: "application/json")
-            headers.add(name: "Content-Length", value: "\(payload.readableBytes)")
+            // A 204 or 304 has no body and, by RFC 9110, no Content-Length: the HTTP parser behind the Linux client
+            // rejects the response otherwise, where URLSession tolerates it.
+            if response.status != 204 && response.status != 304 && response.status >= 200 {
+                headers.add(name: "Content-Length", value: "\(payload.readableBytes)")
+            }
             headers.add(name: "Connection", value: "close")
 
             let status = HTTPResponseStatus(statusCode: response.status)
