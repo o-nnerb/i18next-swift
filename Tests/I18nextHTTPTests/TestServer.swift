@@ -29,11 +29,14 @@ final class TestServer: Sendable {
     /// The request log and the scripted answers, shared with the connection handlers on the event loop thread.
     fileprivate final class Recorder: Sendable {
         private let recorded = NIOLockedValueBox<[Request]>([])
+        private let log = NIOLockedValueBox<[String]>([])
         private let handler: @Sendable (Request, Int) -> Response  // request, 1-based count of requests to that path
 
         init(handler: @escaping @Sendable (Request, Int) -> Response) { self.handler = handler }
 
         var requests: [Request] { recorded.withLockedValue { $0 } }
+        var events: [String] { log.withLockedValue { $0 } }
+        func note(_ event: String) { log.withLockedValue { $0.append(event) } }
 
         func respond(to request: Request) -> Response {
             let seen = recorded.withLockedValue { requests -> Int in
@@ -82,6 +85,7 @@ final class TestServer: Sendable {
     var summary: String {
         let seen = requests.map { "\($0.method) \($0.target)" }
         return "server on port \(port) received \(seen.count) request(s)" + (seen.isEmpty ? "" : ": \(seen)")
+            + "; connection events \(recorder.events)"
     }
 
     /// Returns once nothing listens on the port any more.
@@ -121,7 +125,13 @@ final class TestServer: Sendable {
             }
         }
 
+        func channelInactive(context: ChannelHandlerContext) {
+            recorder.note("client closed")
+            context.fireChannelInactive()
+        }
+
         func errorCaught(context: ChannelHandlerContext, error: any Error) {
+            recorder.note("error \(error)")
             context.close(promise: nil)
         }
 
@@ -144,8 +154,15 @@ final class TestServer: Sendable {
             if payload.readableBytes > 0 {
                 context.write(wrapOutboundOut(.body(.byteBuffer(payload))), promise: nil)
             }
+            // Half-close, then let the client hang up: closing the socket right after the write can reset the
+            // connection under a client that has not read the response yet. A timer closes it for good otherwise.
             let channel = context.channel
-            context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in channel.close(promise: nil) }
+            let code = response.status
+            context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { [recorder] _ in
+                recorder.note("responded \(code)")
+                channel.close(mode: .output, promise: nil)
+            }
+            context.eventLoop.scheduleTask(in: .seconds(5)) { channel.close(promise: nil) }
         }
     }
 }
