@@ -379,28 +379,31 @@ struct HTTPBackendCreateTests {
         #expect(server.requests.isEmpty)
     }
 
-    @Test func statusesAreMapped() async throws {
-        let server = try TestServer { request, _ in
-            request.path.hasSuffix("/forbidden") ? .init(status: 403, body: "") : .init(status: 429, body: "")
-        }
+    /// What `create` throws for a server that always answers `status`, as text, or "no error".
+    private func outcome(for status: Int) async throws -> (thrown: String, requests: Int) {
+        let server = try TestServer { _, _ in .init(status: status, body: "") }
         defer { server.stop() }
         let backend = try HTTPBackend(baseURL: server.baseURL)
-
-        await #expect(throws: HTTPTransientError.self) {
-            try await backend.create(languages: ["pt"], namespace: "t", key: "k", fallbackValue: nil, isUpdate: false)
-        }
         do {
-            try await backend.create(
-                languages: ["pt"],
-                namespace: "forbidden",
-                key: "k",
-                fallbackValue: nil,
-                isUpdate: false
-            )
-            Issue.record("expected unexpectedStatus")
-        } catch HTTPBackendError.unexpectedStatus(let status) {
-            #expect(status == 403)
+            try await backend.create(languages: ["pt"], namespace: "t", key: "k", fallbackValue: nil, isUpdate: false)
+            return ("no error", server.requests.count)
+        } catch let error as HTTPTransientError {
+            return ("transient \(error.statusCode.map(String.init) ?? "nil")", server.requests.count)
+        } catch HTTPBackendError.unexpectedStatus(let code) {
+            return ("unexpected \(code)", server.requests.count)
+        } catch {
+            return ("other \(error)", server.requests.count)
         }
+    }
+
+    @Test(arguments: [
+        (408, "transient 408"), (425, "transient 425"), (429, "transient 429"), (500, "transient 500"),
+        (503, "transient 503"), (400, "unexpected 400"), (403, "unexpected 403"), (301, "unexpected 301"),
+        (200, "no error"), (204, "no error"),
+    ])
+    func statusesAreMapped(status: Int, expected: String) async throws {
+        let result = try await outcome(for: status)
+        #expect(result.thrown == expected, "status \(status), \(result.requests) request(s) reached the server")
     }
 
     @Test func rejectsUnsafeLanguageAndNamespace() async throws {
