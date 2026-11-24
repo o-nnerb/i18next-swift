@@ -21,7 +21,7 @@ let package = Package(
         .package(url: "https://github.com/o-nnerb/swift-async-stream.git", from: "3.0.2"),
         .package(
             url: "https://github.com/request-dl/request-dl-nio.git",
-            from: "4.5.8"
+            branch: "main"
         ),
         // Test-only: the loopback HTTP server of `I18nextHTTPTests`. Already in the graph through `request-dl-nio`,
         // whose lower bound is the same, so this adds no package and no constraint; no product depends on it.
